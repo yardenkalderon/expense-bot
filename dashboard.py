@@ -601,23 +601,22 @@ def main():
     uid = user["user_id"]
     display_name = user.get("username") or user.get("dashboard_username", "")
 
-    with st.sidebar:
-        st.markdown(f"<h3 style='color:#FFFFFF'>שלום, {display_name} 👋</h3>",
-                    unsafe_allow_html=True)
-        st.markdown("---")
+    now = datetime.now()
+    month_options = []
+    for i in range(12):
+        d = now.replace(day=1) - timedelta(days=i * 30)
+        month_options.append(d.strftime("%Y-%m"))
 
-        now = datetime.now()
-        month_options = []
-        for i in range(12):
-            d = now.replace(day=1) - timedelta(days=i * 30)
-            month_options.append(d.strftime("%Y-%m"))
-
+    col_title, col_month, col_users, col_logout = st.columns([3, 1.5, 1.2, 1])
+    with col_month:
         selected_month = st.selectbox(
             "חודש", month_options,
-            format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y")
+            format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y"),
+            label_visibility="collapsed"
         )
+    with col_users:
         all_users = st.checkbox("כל המשתמשים", value=False)
-        st.markdown("---")
+    with col_logout:
         if st.button("התנתק", use_container_width=True):
             for k in ["logged_in", "user"]:
                 st.session_state.pop(k, None)
@@ -634,8 +633,9 @@ def main():
     budgets = st.session_state[bkey]
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
-    st.markdown(f"<h1 style='color:#FFFFFF'>💰 דשבורד הוצאות — {month_label}</h1>",
-                unsafe_allow_html=True)
+    with col_title:
+        st.markdown(f"<h2 style='color:#FFFFFF;margin:0'>💰 דשבורד הוצאות — {month_label}</h2>",
+                    unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6 = st.tabs(
         ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🎯 תקציב", "👥 משותף", "⚙️ הגדרות"])
