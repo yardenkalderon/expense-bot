@@ -2,13 +2,14 @@ import json
 import os
 import base64
 import tempfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import defaultdict
 from dotenv import load_dotenv
 from groq import Groq
 from supabase import create_client
 from telegram import Update
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 load_dotenv()
 
@@ -58,6 +59,50 @@ def get_monthly_report(user_id):
         report += f"▫️ *{cat}:* {amt:,.2f} ש\"ח\n"
     report += f"\n💰 *סה\"כ: {total:,.2f} ש\"ח*"
     return report
+
+
+def get_week_report(user_id):
+    week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    result = db.table('expenses').select('category,amount').eq('user_id', user_id).gte('date', week_ago).execute()
+    rows = result.data
+    if not rows:
+        return "אין הוצאות בשבוע האחרון."
+    totals = defaultdict(float)
+    for row in rows:
+        totals[row['category']] += row['amount']
+    sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+    report = f"📊 *סיכום שבועי (7 ימים אחרונים):*\n\n"
+    for cat, amt in sorted_totals:
+        report += f"▫️ *{cat}:* {amt:,.0f} ש\"ח\n"
+    report += f"\n💰 *סה\"כ: {sum(totals.values()):,.0f} ש\"ח*"
+    return report
+
+
+def get_category_budget(user_id, category):
+    month = datetime.now().strftime("%Y-%m")
+    result = db.table('budgets').select('amount').eq('user_id', user_id).eq('month', month).eq('category', category).eq('group_id', 0).execute()
+    return result.data[0]['amount'] if result.data else None
+
+
+def get_category_spent(user_id, category):
+    month = datetime.now().strftime("%Y-%m")
+    result = db.table('expenses').select('amount').eq('user_id', user_id).like('date', f'{month}%').eq('category', category).execute()
+    return sum(r['amount'] for r in (result.data or []))
+
+
+def get_user_groups(user_id):
+    result = db.table('group_members').select('group_id').eq('user_id', user_id).execute()
+    return [r['group_id'] for r in (result.data or [])]
+
+
+def get_group_other_members(user_id, group_id):
+    result = db.table('group_members').select('user_id').eq('group_id', group_id).neq('user_id', user_id).execute()
+    return [r['user_id'] for r in (result.data or [])]
+
+
+def get_username(user_id):
+    result = db.table('authorized_users').select('username').eq('user_id', user_id).execute()
+    return result.data[0].get('username', '') if result.data else ''
 
 
 def get_last_expenses(user_id):
@@ -152,7 +197,7 @@ async def check_auth(update: Update, user_text: str) -> bool:
     return False
 
 
-async def process_and_save(update: Update, user_id: int, text: str):
+async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, text: str):
     try:
         data = analyze_text_with_ai(text)
         amount = data.get('amount', 0)
@@ -164,6 +209,39 @@ async def process_and_save(update: Update, user_id: int, text: str):
                 f"✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}",
                 parse_mode='Markdown'
             )
+            # התראת תקציב
+            budget = get_category_budget(user_id, category)
+            if budget:
+                spent = get_category_spent(user_id, category)
+                pct = spent / budget
+                if pct >= 1.0:
+                    await update.message.reply_text(
+                        f"🚨 חרגת מהתקציב בקטגוריה *{category}*!\n"
+                        f"הוצאת *{spent:,.0f} ש\"ח* מתוך תקציב *{budget:,.0f} ש\"ח*",
+                        parse_mode='Markdown'
+                    )
+                elif pct >= 0.9:
+                    await update.message.reply_text(
+                        f"⚠️ הגעת ל-{pct*100:.0f}% מהתקציב בקטגוריה *{category}*!\n"
+                        f"נשאר לך רק *{budget - spent:,.0f} ש\"ח*",
+                        parse_mode='Markdown'
+                    )
+            # הודעה לחברי קבוצה
+            username = get_username(user_id) or "חבר קבוצה"
+            group_ids = get_user_groups(user_id)
+            notified = set()
+            for gid in group_ids:
+                for member_id in get_group_other_members(user_id, gid):
+                    if member_id not in notified:
+                        try:
+                            await context.bot.send_message(
+                                chat_id=member_id,
+                                text=f"💸 *{username}* הוסיף: *{amount:,.0f} ש\"ח* על {item} ({category})",
+                                parse_mode='Markdown'
+                            )
+                            notified.add(member_id)
+                        except Exception:
+                            pass
         else:
             await update.message.reply_text(
                 "לא הצלחתי לזהות סכום. נסה לנסח מחדש, למשל: _קפה 15 שקל_",
@@ -194,7 +272,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.unlink(tmp_path)
         transcribed_text = transcription.text
         await update.message.reply_text(f"🎙️ שמעתי: _{transcribed_text}_", parse_mode='Markdown')
-        await process_and_save(update, user_id, transcribed_text)
+        await process_and_save(update, context, user_id, transcribed_text)
     except Exception:
         await update.message.reply_text("אירעה שגיאה בעיבוד ההקלטה. נסה שוב.")
 
@@ -245,6 +323,20 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 f"🧾 קבלה זוהתה!\n✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}",
                 parse_mode='Markdown'
             )
+            budget = get_category_budget(user_id, category)
+            if budget:
+                spent = get_category_spent(user_id, category)
+                pct = spent / budget
+                if pct >= 1.0:
+                    await update.message.reply_text(
+                        f"🚨 חרגת מהתקציב בקטגוריה *{category}*!\nהוצאת *{spent:,.0f} ש\"ח* מתוך *{budget:,.0f} ש\"ח*",
+                        parse_mode='Markdown'
+                    )
+                elif pct >= 0.9:
+                    await update.message.reply_text(
+                        f"⚠️ הגעת ל-{pct*100:.0f}% מהתקציב בקטגוריה *{category}*!\nנשאר לך *{budget - spent:,.0f} ש\"ח*",
+                        parse_mode='Markdown'
+                    )
         else:
             await update.message.reply_text("לא הצלחתי לזהות סכום בקבלה. נסה לצלם שוב בצורה ברורה יותר.")
     except Exception:
@@ -312,13 +404,42 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     await update.message.reply_chat_action("typing")
-    await process_and_save(update, user_id, user_text)
+    await process_and_save(update, context, user_id, user_text)
+
+
+async def weekly_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    user_id = update.message.from_user.id
+    if not is_authorized(user_id):
+        return
+    await update.message.reply_text(get_week_report(user_id), parse_mode='Markdown')
+
+
+async def send_monthly_summaries(bot):
+    result = db.table('authorized_users').select('user_id').execute()
+    for row in (result.data or []):
+        uid = row['user_id']
+        report = get_monthly_report(uid)
+        try:
+            await bot.send_message(chat_id=uid, text=f"📅 *סיכום חודשי אוטומטי*\n\n{report}", parse_mode='Markdown')
+        except Exception:
+            pass
 
 
 if __name__ == '__main__':
     app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        lambda: app.create_task(send_monthly_summaries(app.bot)),
+        'cron', day='last', hour=20, minute=0
+    )
+    scheduler.start()
+
     app.add_handler(CommandHandler("start", start_help))
     app.add_handler(CommandHandler("help", start_help))
+    app.add_handler(CommandHandler("week", weekly_report_cmd))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))

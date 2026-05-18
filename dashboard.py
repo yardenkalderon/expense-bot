@@ -152,6 +152,15 @@ summary { color: #FFFFFF !important; }
 
 /* ── Info/Success/Warning boxes ── */
 .stAlert { background-color: #1A2F4A; border-radius: 10px; }
+
+/* ── מובייל ── */
+@media (max-width: 768px) {
+    .block-container { padding: 3.5rem 0.4rem 0.5rem !important; }
+    .metric-value { font-size: 1.3rem !important; }
+    .metric-card { padding: 0.8rem 0.5rem !important; }
+    .stTabs [data-baseweb="tab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
+    h1, h2, h3 { font-size: 1.1rem !important; }
+}
 </style>
 """, unsafe_allow_html=True)
 
