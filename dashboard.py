@@ -194,9 +194,9 @@ def fetch_users():
 
 
 @st.cache_data(ttl=60)
-def fetch_budget(user_id, month):
+def fetch_budget(user_id, month, group_id=0):
     db = get_db()
-    result = db.table("budgets").select("*").eq("user_id", user_id).eq("month", month).execute()
+    result = db.table("budgets").select("*").eq("user_id", user_id).eq("month", month).eq("group_id", group_id).execute()
     return {row["category"]: row["amount"] for row in (result.data or [])}
 
 
@@ -238,16 +238,16 @@ def delete_group(group_id):
     db.table("groups").delete().eq("id", group_id).execute()
 
 
-def save_budget_to_db(user_id, month, budgets_dict):
+def save_budget_to_db(user_id, month, budgets_dict, group_id=0):
     db = get_db()
     for cat, amount in budgets_dict.items():
         if amount > 0:
             db.table("budgets").upsert({
-                "user_id": user_id, "month": month,
+                "user_id": user_id, "month": month, "group_id": group_id,
                 "category": cat, "amount": float(amount)
-            }, on_conflict="user_id,month,category").execute()
+            }, on_conflict="user_id,group_id,month,category").execute()
         else:
-            db.table("budgets").delete().eq("user_id", user_id).eq("month", month).eq("category", cat).execute()
+            db.table("budgets").delete().eq("user_id", user_id).eq("month", month).eq("group_id", group_id).eq("category", cat).execute()
     fetch_budget.clear()
 
 
@@ -494,13 +494,13 @@ def tab_table(df_all):
                     unsafe_allow_html=True)
 
 
-def tab_budget(df, selected_month, user_id):
+def tab_budget(df, selected_month, user_id, group_id=0):
     st.markdown("### תקציב חודשי")
 
     # Load from DB if not in session
-    bkey = f"budget_{selected_month}"
+    bkey = f"budget_{selected_month}_{group_id}"
     if bkey not in st.session_state:
-        st.session_state[bkey] = fetch_budget(user_id, selected_month)
+        st.session_state[bkey] = fetch_budget(user_id, selected_month, group_id)
 
     budgets = st.session_state[bkey]
 
@@ -511,11 +511,11 @@ def tab_budget(df, selected_month, user_id):
         with cols[i % 3]:
             val = st.number_input(cat, min_value=0, step=50,
                                    value=int(budgets.get(cat, 0)),
-                                   key=f"b_{cat}_{selected_month}")
+                                   key=f"b_{cat}_{selected_month}_{group_id}")
             new_budgets[cat] = val
 
-    if st.button("שמור תקציב", key=f"save_budget_{selected_month}"):
-        save_budget_to_db(user_id, selected_month, new_budgets)
+    if st.button("שמור תקציב", key=f"save_budget_{selected_month}_{group_id}"):
+        save_budget_to_db(user_id, selected_month, new_budgets, group_id)
         st.session_state[bkey] = new_budgets
         budgets = new_budgets
         st.success("התקציב נשמר!")
@@ -729,21 +729,23 @@ def main():
                 st.session_state.pop(k, None)
             st.rerun()
 
-    # Determine which user_ids to show
+    # Determine which user_ids and group_id to use
     if selected_group_name == "אני בלבד":
         active_user_ids = None
+        active_group_id = 0
     else:
         selected_group = next((g for g in groups if g["name"] == selected_group_name), None)
         active_user_ids = fetch_group_members(selected_group["id"]) if selected_group else None
+        active_group_id = selected_group["id"] if selected_group else 0
 
     prev = prev_month_str(selected_month)
     df = fetch_expenses(user_id=uid, month=selected_month, user_ids=active_user_ids)
     df_prev = fetch_expenses(user_id=uid, month=prev, user_ids=active_user_ids)
     df_all = fetch_expenses(user_id=uid, user_ids=active_user_ids)
 
-    bkey = f"budget_{selected_month}"
+    bkey = f"budget_{selected_month}_{active_group_id}"
     if bkey not in st.session_state:
-        st.session_state[bkey] = fetch_budget(uid, selected_month)
+        st.session_state[bkey] = fetch_budget(uid, selected_month, active_group_id)
     budgets = st.session_state[bkey]
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
@@ -757,7 +759,7 @@ def main():
     with t1: tab_overview(df, df_prev, budgets)
     with t2: tab_trends(df_all)
     with t3: tab_table(df_all)
-    with t4: tab_budget(df, selected_month, uid)
+    with t4: tab_budget(df, selected_month, uid, active_group_id)
     with t5: tab_shared(selected_month)
     with t6: tab_settings()
 
