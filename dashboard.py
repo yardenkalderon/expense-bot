@@ -6,6 +6,8 @@ from supabase import create_client
 from datetime import datetime, timedelta
 import hashlib
 import os
+import io
+import tempfile
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://zqbimrpywehyfodghgan.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '***REMOVED***')
@@ -271,6 +273,134 @@ def update_expense(expense_id, category, item, amount, date_str):
     fetch_expenses.clear()
 
 
+def add_expense(user_id, amount, category, item, date):
+    db = get_db()
+    db.table("expenses").insert({
+        "user_id": user_id,
+        "amount": float(amount),
+        "category": category,
+        "item": item,
+        "date": str(date) + " 00:00:00"
+    }).execute()
+    fetch_expenses.clear()
+
+
+@st.cache_resource
+def get_hebrew_font_path():
+    font_path = os.path.join(tempfile.gettempdir(), "NotoSansHebrew.ttf")
+    if not os.path.exists(font_path):
+        try:
+            import requests
+            r = requests.get(
+                "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansHebrew/NotoSansHebrew-Regular.ttf",
+                timeout=15
+            )
+            with open(font_path, "wb") as f:
+                f.write(r.content)
+        except Exception:
+            return None
+    return font_path
+
+
+def generate_pdf(df, selected_month, display_name):
+    from fpdf import FPDF
+    from bidi.algorithm import get_display
+
+    def rtl(text):
+        return get_display(str(text))
+
+    font_path = get_hebrew_font_path()
+    month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
+
+    pdf = FPDF()
+    pdf.add_page()
+
+    if font_path:
+        pdf.add_font("Heb", "", font_path)
+        fn = "Heb"
+    else:
+        fn = "Helvetica"
+
+    # Background
+    pdf.set_fill_color(15, 25, 35)
+    pdf.rect(0, 0, 210, 297, "F")
+
+    # Title
+    pdf.set_font(fn, size=18)
+    pdf.set_text_color(0, 201, 167)
+    pdf.cell(0, 14, rtl(f"דוח הוצאות — {month_label}"), align="R", new_x="LMARGIN", new_y="NEXT")
+
+    pdf.set_font(fn, size=10)
+    pdf.set_text_color(90, 143, 168)
+    pdf.cell(0, 7, rtl(display_name), align="R", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(3)
+
+    # Summary
+    if not df.empty:
+        total = df["amount"].sum()
+        daily_avg = total / max(df["date"].dt.date.nunique(), 1)
+        top_cat = df.groupby("category")["amount"].sum().idxmax()
+
+        pdf.set_fill_color(22, 38, 52)
+        pdf.rect(10, pdf.get_y(), 190, 22, "F")
+        pdf.set_text_color(224, 240, 248)
+        pdf.set_font(fn, size=10)
+        y = pdf.get_y() + 4
+        pdf.set_xy(10, y)
+        pdf.cell(63, 7, rtl(f'סהכ: {total:,.0f} שח'), align="C")
+        pdf.cell(63, 7, rtl(f'ממוצע יומי: {daily_avg:,.0f} שח'), align="C")
+        pdf.cell(64, 7, rtl(f'קטגוריה מובילה: {top_cat}'), align="C")
+        pdf.ln(18)
+
+    pdf.ln(4)
+
+    # Table header
+    pdf.set_fill_color(0, 201, 167)
+    pdf.set_text_color(15, 25, 35)
+    pdf.set_font(fn, size=9)
+    widths = [35, 70, 45, 30]
+    headers = [rtl("תאריך"), rtl("פריט"), rtl("קטגוריה"), rtl("סכום")]
+    for h_txt, w in zip(headers, widths):
+        pdf.cell(w, 8, h_txt, fill=True, align="C")
+    pdf.ln()
+
+    # Rows
+    if not df.empty:
+        pdf.set_font(fn, size=8)
+        for i, (_, row) in enumerate(df.sort_values("date", ascending=False).iterrows()):
+            if pdf.get_y() > 270:
+                pdf.add_page()
+                pdf.set_fill_color(15, 25, 35)
+                pdf.rect(0, 0, 210, 297, "F")
+                pdf.set_y(20)
+            pdf.set_fill_color(22, 38, 52) if i % 2 == 0 else pdf.set_fill_color(18, 30, 42)
+            pdf.set_text_color(224, 240, 248)
+            date_str = row["date"].strftime("%d/%m/%Y") if hasattr(row["date"], "strftime") else str(row["date"])[:10]
+            pdf.cell(widths[0], 7, date_str, fill=True, align="C")
+            pdf.cell(widths[1], 7, rtl(str(row["item"])[:25]), fill=True, align="R")
+            pdf.cell(widths[2], 7, rtl(str(row["category"])), fill=True, align="R")
+            pdf.cell(widths[3], 7, f"{row['amount']:,.0f}", fill=True, align="C")
+            pdf.ln()
+
+    # Category totals
+    if not df.empty:
+        pdf.ln(6)
+        pdf.set_text_color(0, 201, 167)
+        pdf.set_font(fn, size=11)
+        pdf.cell(0, 8, rtl("סיכום לפי קטגוריה"), align="R", new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font(fn, size=9)
+        totals = df.groupby("category")["amount"].sum().sort_values(ascending=False)
+        for cat, amt in totals.items():
+            pdf.set_fill_color(22, 38, 52)
+            pdf.set_text_color(224, 240, 248)
+            pdf.cell(140, 7, rtl(str(cat)), fill=True, align="R")
+            pdf.set_text_color(0, 201, 167)
+            pdf.cell(40, 7, f"{amt:,.0f}", fill=True, align="C")
+            pdf.ln()
+
+    return bytes(pdf.output())
+
+
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 
 def login_page():
@@ -427,8 +557,29 @@ def tab_trends(df_all):
         st.plotly_chart(fig2, use_container_width=True, key="bar_monthly")
 
 
-def tab_table(df_all):
+def tab_table(df_all, user_id, selected_month, display_name):
     st.markdown("### כל ההוצאות")
+
+    # ── הוספת הוצאה ידנית ──
+    with st.expander("➕ הוסף הוצאה ידנית"):
+        with st.form("manual_expense"):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                m_amount = st.number_input("סכום (₪)", min_value=0.0, step=1.0)
+            with c2:
+                m_category = st.selectbox("קטגוריה", CATEGORIES, key="man_cat")
+            with c3:
+                m_item = st.text_input("פריט")
+            with c4:
+                m_date = st.date_input("תאריך", value=datetime.now().date())
+            if st.form_submit_button("➕ הוסף"):
+                if m_amount > 0 and m_item:
+                    add_expense(user_id, m_amount, m_category, m_item, m_date)
+                    st.success(f"נוסף: {m_item} — ₪{m_amount:,.0f}")
+                    st.rerun()
+                else:
+                    st.error("מלא סכום ופריט")
+
     if df_all.empty:
         st.info("אין נתונים")
         return
@@ -452,6 +603,20 @@ def tab_table(df_all):
     if df_f.empty:
         st.info("אין תוצאות")
         return
+
+    # ── ייצוא PDF ──
+    try:
+        pdf_bytes = generate_pdf(df_f, selected_month, display_name)
+        month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m-%Y")
+        st.download_button(
+            label="📄 ייצוא לPDF",
+            data=pdf_bytes,
+            file_name=f"expenses_{month_label}.pdf",
+            mime="application/pdf",
+            key="pdf_download"
+        )
+    except Exception as e:
+        st.warning(f"לא ניתן ליצור PDF: {e}")
 
     # Build editable dataframe (keep id for saving)
     edit_df = df_f[["id", "category", "item", "amount", "date"]].copy()
@@ -778,7 +943,7 @@ def main():
 
     with t1: tab_overview(df, df_prev, budgets)
     with t2: tab_trends(df_all)
-    with t3: tab_table(df_all)
+    with t3: tab_table(df_all, uid, selected_month, display_name)
     with t4: tab_budget(df, selected_month, uid, active_group_id)
     with t5: tab_shared(selected_month)
     with t6: tab_settings()

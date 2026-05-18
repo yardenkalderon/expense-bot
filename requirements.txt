@@ -6,3 +6,5 @@ streamlit
 plotly
 pandas
 apscheduler
+fpdf2
+python-bidi
