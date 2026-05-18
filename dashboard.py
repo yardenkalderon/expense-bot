@@ -456,6 +456,7 @@ def tab_table(df_all):
     # Build editable dataframe (keep id for saving)
     edit_df = df_f[["id", "category", "item", "amount", "date"]].copy()
     edit_df["date"] = edit_df["date"].dt.date
+    edit_df.insert(0, "מחק", False)
     edit_df = edit_df.rename(columns={
         "category": "קטגוריה", "item": "פריט",
         "amount": "סכום (₪)", "date": "תאריך"
@@ -467,6 +468,7 @@ def tab_table(df_all):
         hide_index=True,
         column_config={
             "id": None,
+            "מחק": st.column_config.CheckboxColumn("🗑️", default=False),
             "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True),
             "פריט": st.column_config.TextColumn(required=True),
             "סכום (₪)": st.column_config.NumberColumn(min_value=0, format="₪%.0f", required=True),
@@ -475,7 +477,7 @@ def tab_table(df_all):
         key="expense_editor"
     )
 
-    col_save, col_info = st.columns([1, 3])
+    col_save, col_del, col_info = st.columns([1, 1, 2])
     with col_save:
         if st.button("💾 שמור שינויים", key="save_expenses"):
             changed = 0
@@ -498,6 +500,15 @@ def tab_table(df_all):
                 st.rerun()
             else:
                 st.info("לא זוהו שינויים")
+    with col_del:
+        to_delete = edited[edited["מחק"] == True]
+        if st.button(f"🗑️ מחק נבחרים ({len(to_delete)})", key="delete_expenses", disabled=len(to_delete) == 0):
+            db = get_db()
+            for _, row in to_delete.iterrows():
+                db.table("expenses").delete().eq("id", int(row["id"])).execute()
+            fetch_expenses.clear()
+            st.success(f"נמחקו {len(to_delete)} הוצאות!")
+            st.rerun()
     with col_info:
         st.markdown(f"<span style='color:#A0B4C8'>סה\"כ: <b style='color:#4A9EFF'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
                     unsafe_allow_html=True)
