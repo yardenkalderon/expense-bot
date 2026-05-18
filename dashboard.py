@@ -205,7 +205,7 @@ def save_budget_to_db(user_id, month, budgets_dict):
             db.table("budgets").upsert({
                 "user_id": user_id, "month": month,
                 "category": cat, "amount": float(amount)
-            }).execute()
+            }, on_conflict="user_id,month,category").execute()
         else:
             db.table("budgets").delete().eq("user_id", user_id).eq("month", month).eq("category", cat).execute()
     fetch_budget.clear()
