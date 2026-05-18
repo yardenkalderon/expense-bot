@@ -309,6 +309,10 @@ def generate_pdf(df, selected_month, display_name):
     def heb(text):
         return get_display(str(text))
 
+    # Strip characters that Helvetica can't render (non-latin1, e.g. ₪ U+20AA)
+    def lat(text):
+        return str(text).encode("latin-1", errors="ignore").decode("latin-1")
+
     font_path = get_hebrew_font_path()
     has_heb = font_path is not None
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
@@ -320,7 +324,6 @@ def generate_pdf(df, selected_month, display_name):
     if has_heb:
         pdf.add_font("Heb", "", font_path)
 
-    # Use Hebrew font for Hebrew, Helvetica for numbers/dates/Latin
     def set_heb(size):
         pdf.set_font("Heb" if has_heb else "Helvetica", size=size)
 
@@ -357,15 +360,15 @@ def generate_pdf(df, selected_month, display_name):
         top_cat   = df.groupby("category")["amount"].sum().idxmax()
 
         card_data = [
-            (heb('סה"כ'),          f"{total:,.0f} ILS"),
-            (heb("ממוצע יומי"),    f"{daily_avg:,.0f} ILS"),
-            (heb("קטגוריה מובילה"), heb(str(top_cat))),
+            (heb('סה"כ'),           lat(f"{total:,.0f}"),       False),
+            (heb("ממוצע יומי"),     lat(f"{daily_avg:,.0f}"),   False),
+            (heb("קטגוריה מובילה"), heb(str(top_cat)),           True),
         ]
         card_w, card_h = 58, 22
         card_xs = [10, 76, 142]
         card_y = pdf.get_y()
 
-        for cx, (lbl, val) in zip(card_xs, card_data):
+        for cx, (lbl, val, is_heb_val) in zip(card_xs, card_data):
             # Card background
             pdf.set_fill_color(26, 48, 64)
             pdf.rect(cx, card_y, card_w, card_h, "F")
@@ -377,8 +380,11 @@ def generate_pdf(df, selected_month, display_name):
             pdf.set_text_color(90, 143, 168)
             pdf.set_xy(cx, card_y + 4)
             pdf.cell(card_w, 5, lbl, align="C")
-            # Value
-            set_num(11)
+            # Value — use correct font
+            if is_heb_val:
+                set_heb(10)
+            else:
+                set_num(12)
             pdf.set_text_color(224, 240, 248)
             pdf.set_xy(cx, card_y + 11)
             pdf.cell(card_w, 8, val, align="C")
@@ -400,7 +406,7 @@ def generate_pdf(df, selected_month, display_name):
         pdf.cell(COL_ITEM, 9, heb("פריט"),      fill=True, align="C")
         pdf.cell(COL_CAT,  9, heb("קטגוריה"),  fill=True, align="C")
         set_num(9)
-        pdf.cell(COL_AMT,  9, "Amount (ILS)",   fill=True, align="C")
+        pdf.cell(COL_AMT,  9, lat("Amount (ILS)"),   fill=True, align="C")
         pdf.ln()
 
     draw_table_header()
@@ -420,13 +426,13 @@ def generate_pdf(df, selected_month, display_name):
             date_str = row["date"].strftime("%d/%m/%Y") if hasattr(row["date"], "strftime") else str(row["date"])[:10]
             item_str = str(row["item"])[:30] if row["item"] else ""
             cat_str  = str(row["category"]) if row["category"] else ""
-            amt_str  = f"{float(row['amount']):,.0f}"
+            amt_str  = lat(f"{float(row['amount']):,.0f}")
 
             pdf.set_x(x0)
-            # Date — Helvetica (LTR numbers)
+            # Date — Helvetica
             set_num(8)
             pdf.set_text_color(200, 220, 235)
-            pdf.cell(COL_DATE, row_h, date_str, fill=True, align="C")
+            pdf.cell(COL_DATE, row_h, lat(date_str), fill=True, align="C")
             # Item — Hebrew font
             set_heb(8)
             pdf.set_text_color(200, 220, 235)
@@ -463,7 +469,7 @@ def generate_pdf(df, selected_month, display_name):
             set_num(9)
             pdf.set_fill_color(22, 38, 52)
             pdf.set_text_color(0, 201, 167)
-            pdf.cell(50, 7, f"{amt:,.0f}", fill=True, align="C")
+            pdf.cell(50, 7, lat(f"{amt:,.0f}"), fill=True, align="C")
             pdf.ln()
             # Progress bar
             pdf.set_x(x0)
