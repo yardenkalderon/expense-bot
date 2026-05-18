@@ -705,34 +705,86 @@ def tab_table(df_all, user_id, selected_month, display_name):
     except Exception as e:
         st.warning(f"לא ניתן ליצור PDF: {e}")
 
-    # Build editable dataframe (keep id for saving)
-    edit_df = df_f[["id", "category", "item", "amount", "date"]].copy()
-    edit_df["date"] = edit_df["date"].dt.date
-    edit_df["item"] = edit_df["item"].fillna("")
-    edit_df["category"] = edit_df["category"].fillna(CATEGORIES[0])
-    edit_df.insert(0, "מחק", False)
-    edit_df = edit_df.rename(columns={
-        "category": "קטגוריה", "item": "פריט",
-        "amount": "סכום (₪)", "date": "תאריך"
-    })
-
-    edited = st.data_editor(
-        edit_df,
-        use_container_width=True,
-        hide_index=True,
-        column_config={
-            "id": None,
-            "מחק": st.column_config.CheckboxColumn("🗑️", default=False, width="small"),
-            "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True, width="small"),
-            "פריט": st.column_config.TextColumn(required=True, width="small"),
-            "סכום (₪)": st.column_config.NumberColumn(min_value=0, format="₪%.0f", required=True, width="small"),
-            "תאריך": st.column_config.DateColumn(format="DD/MM/YYYY", required=True, width="small"),
-        },
-        key="expense_editor"
+    # ── סיכום + HTML table (mobile-friendly) ──
+    st.markdown(
+        f"<div style='text-align:right;color:#5A8FA8;margin-bottom:6px'>"
+        f"סה\"כ: <b style='color:#00C9A7'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</div>",
+        unsafe_allow_html=True
     )
 
-    col_save, col_del, col_info = st.columns([1, 1, 2])
-    with col_save:
+    rows_html = ""
+    for i, (_, row) in enumerate(df_f.iterrows()):
+        bg = "#162634" if i % 2 == 0 else "#111D27"
+        date_s = row["date"].strftime("%d/%m/%Y") if hasattr(row["date"], "strftime") else str(row["date"])[:10]
+        item_s = str(row["item"]) if row["item"] else "—"
+        cat_s  = str(row["category"]) if row["category"] else "—"
+        amt_s  = f"₪{float(row['amount']):,.0f}"
+        rows_html += (
+            f"<tr style='background:{bg}'>"
+            f"<td style='padding:7px 8px;color:#5A8FA8;white-space:nowrap;font-size:0.8rem'>{date_s}</td>"
+            f"<td style='padding:7px 8px;color:#E0F0F8;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap'>{item_s}</td>"
+            f"<td style='padding:7px 8px;color:#5A8FA8;font-size:0.8rem;white-space:nowrap'>{cat_s}</td>"
+            f"<td style='padding:7px 8px;color:#00C9A7;font-weight:700;white-space:nowrap;text-align:left'>{amt_s}</td>"
+            f"</tr>"
+        )
+
+    st.markdown(f"""
+<div style='overflow-x:auto;direction:rtl;border-radius:10px;overflow:hidden;border:1px solid #1A3040'>
+<table style='width:100%;border-collapse:collapse;font-family:Heebo,sans-serif;font-size:0.85rem'>
+  <thead>
+    <tr style='background:#0F1923;border-bottom:2px solid #1A3040'>
+      <th style='padding:8px;color:#00C9A7;text-align:right;font-weight:600'>תאריך</th>
+      <th style='padding:8px;color:#00C9A7;text-align:right;font-weight:600'>פריט</th>
+      <th style='padding:8px;color:#00C9A7;text-align:right;font-weight:600'>קטגוריה</th>
+      <th style='padding:8px;color:#00C9A7;text-align:right;font-weight:600'>סכום</th>
+    </tr>
+  </thead>
+  <tbody>{rows_html}</tbody>
+</table></div>""", unsafe_allow_html=True)
+
+    st.markdown("<br>", unsafe_allow_html=True)
+
+    # ── מחיקה ──
+    expense_labels = [
+        f"{row['date'].strftime('%d/%m/%Y') if hasattr(row['date'], 'strftime') else str(row['date'])[:10]}  |  {str(row['item']) or ''}  |  ₪{float(row['amount']):,.0f}"
+        for _, row in df_f.iterrows()
+    ]
+    expense_ids = [int(row["id"]) for _, row in df_f.iterrows()]
+    label_to_id = dict(zip(expense_labels, expense_ids))
+
+    with st.expander("🗑️ מחק הוצאות"):
+        to_del_labels = st.multiselect("בחר הוצאות למחיקה", expense_labels, key="del_multiselect")
+        if st.button(f"מחק {len(to_del_labels)} נבחרים", key="delete_expenses", disabled=len(to_del_labels) == 0):
+            db = get_db()
+            for lbl in to_del_labels:
+                db.table("expenses").delete().eq("id", label_to_id[lbl]).execute()
+            fetch_expenses.clear()
+            st.success(f"נמחקו {len(to_del_labels)} הוצאות!")
+            st.rerun()
+
+    # ── עריכה מתקדמת (desktop) ──
+    with st.expander("✏️ עריכה מתקדמת"):
+        edit_df = df_f[["id", "category", "item", "amount", "date"]].copy()
+        edit_df["date"] = edit_df["date"].dt.date
+        edit_df["item"] = edit_df["item"].fillna("")
+        edit_df["category"] = edit_df["category"].fillna(CATEGORIES[0])
+        edit_df = edit_df.rename(columns={
+            "category": "קטגוריה", "item": "פריט",
+            "amount": "סכום (₪)", "date": "תאריך"
+        })
+        edited = st.data_editor(
+            edit_df,
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                "id": None,
+                "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True),
+                "פריט": st.column_config.TextColumn(required=True),
+                "סכום (₪)": st.column_config.NumberColumn(min_value=0, format="₪%.0f", required=True),
+                "תאריך": st.column_config.DateColumn(format="DD/MM/YYYY", required=True),
+            },
+            key="expense_editor"
+        )
         if st.button("💾 שמור שינויים", key="save_expenses"):
             changed = 0
             for i, row in edited.iterrows():
@@ -754,18 +806,6 @@ def tab_table(df_all, user_id, selected_month, display_name):
                 st.rerun()
             else:
                 st.info("לא זוהו שינויים")
-    with col_del:
-        to_delete = edited[edited["מחק"] == True]
-        if st.button(f"🗑️ מחק נבחרים ({len(to_delete)})", key="delete_expenses", disabled=len(to_delete) == 0):
-            db = get_db()
-            for _, row in to_delete.iterrows():
-                db.table("expenses").delete().eq("id", int(row["id"])).execute()
-            fetch_expenses.clear()
-            st.success(f"נמחקו {len(to_delete)} הוצאות!")
-            st.rerun()
-    with col_info:
-        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
-                    unsafe_allow_html=True)
 
 
 def tab_budget(df, selected_month, user_id, group_id=0):
