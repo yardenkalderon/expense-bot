@@ -12,21 +12,21 @@ SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '***REMOVED***')
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 CAT_COLORS = {
-    "אוכל ושתייה": "#4A9EFF",
-    "קניות וסופר": "#7B68EE",
-    "תחבורה ודלק": "#50C878",
+    "אוכל ושתייה": "#00C9A7",
+    "קניות וסופר": "#3DD6F5",
+    "תחבורה ודלק": "#56E39F",
     "פנאי ובילוי": "#FFB347",
-    "חשבונות ובית": "#87CEEB",
+    "חשבונות ובית": "#5A8FA8",
     "בריאות": "#FF6B6B",
-    "אחר": "#607D8B",
+    "אחר": "#2A5060",
 }
 
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font_color="#A0B4C8",
-    xaxis=dict(gridcolor="#1E3A5F", linecolor="#1E3A5F"),
-    yaxis=dict(gridcolor="#1E3A5F", linecolor="#1E3A5F"),
+    font_color="#5A8FA8",
+    xaxis=dict(gridcolor="#1A3040", linecolor="#1A3040"),
+    yaxis=dict(gridcolor="#1A3040", linecolor="#1A3040"),
     margin=dict(l=0, r=0, t=10, b=0),
 )
 
@@ -42,8 +42,8 @@ html, body, [class*="css"] {
 }
 
 /* ── רקע ראשי ── */
-.stApp { background-color: #0F1B2D; }
-.block-container { padding-top: 4rem; background-color: #0F1B2D; }
+.stApp { background-color: #0F1923; }
+.block-container { padding-top: 4rem; background-color: #0F1923; }
 
 /* ── הסתרת toolbar של Streamlit ── */
 header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
@@ -53,105 +53,105 @@ footer { visibility: hidden; }
 
 /* ── כרטיסי מטריקה ── */
 .metric-card {
-    background: #1A2F4A;
+    background: #162634;
     border-radius: 14px;
     padding: 1.2rem 1rem;
     text-align: center;
-    border-top: 4px solid #4A9EFF;
+    border-top: 4px solid #00C9A7;
     margin-bottom: 0.5rem;
 }
 .metric-card.red    { border-top-color: #FF6B6B; }
-.metric-card.green  { border-top-color: #50C878; }
-.metric-card.purple { border-top-color: #7B68EE; }
-.metric-value { font-size: 1.9rem; font-weight: 700; color: #FFFFFF; }
-.metric-label { font-size: 0.82rem; color: #A0B4C8; margin-top: 4px; }
+.metric-card.green  { border-top-color: #56E39F; }
+.metric-card.purple { border-top-color: #3DD6F5; }
+.metric-value { font-size: 1.9rem; font-weight: 700; color: #E0F0F8; }
+.metric-label { font-size: 0.82rem; color: #5A8FA8; margin-top: 4px; }
 
 /* ── טאבים ── */
 .stTabs [data-baseweb="tab-list"] {
     gap: 6px;
-    background: #0F1B2D;
+    background: #0F1923;
 }
 .stTabs [data-baseweb="tab"] {
-    background: #1A2F4A;
+    background: #1A3040;
     border-radius: 8px;
     padding: 6px 14px;
     font-weight: 500;
-    color: #A0B4C8;
+    color: #5A8FA8;
     border: none;
 }
 .stTabs [aria-selected="true"] {
-    background: #4A9EFF !important;
-    color: #FFFFFF !important;
+    background: #00C9A7 !important;
+    color: #0F1923 !important;
 }
 
 /* ── כפתורים ── */
 .stButton > button {
-    background-color: #4A9EFF;
-    color: #FFFFFF;
+    background-color: #00C9A7;
+    color: #0F1923;
     border-radius: 8px;
     border: none;
     font-weight: 600;
     font-family: 'Heebo', sans-serif;
 }
-.stButton > button:hover { background-color: #2d7ed4; color: white; }
+.stButton > button:hover { background-color: #00a98c; color: #0F1923; }
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #0A1628 !important;
-    border-left: 1px solid #1A2F4A;
+    background: #0F1923 !important;
+    border-left: 1px solid #1A3040;
     right: 0 !important;
     left: auto !important;
 }
-section[data-testid="stSidebar"] * { color: #A0B4C8 !important; }
+section[data-testid="stSidebar"] * { color: #5A8FA8 !important; }
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 { color: #FFFFFF !important; }
+section[data-testid="stSidebar"] h3 { color: #E0F0F8 !important; }
 
 /* ── מניעת overlap של sidebar ── */
 .main { margin-right: 0 !important; }
 
 /* ── Inputs ── */
 .stTextInput input, .stSelectbox select, .stNumberInput input {
-    background-color: #1A2F4A !important;
-    color: #FFFFFF !important;
-    border: 1px solid #2A4A6A !important;
+    background-color: #162634 !important;
+    color: #E0F0F8 !important;
+    border: 1px solid #1A3040 !important;
     border-radius: 8px !important;
 }
 .stSelectbox > div > div {
-    background-color: #1A2F4A !important;
-    color: #FFFFFF !important;
-    border: 1px solid #2A4A6A !important;
+    background-color: #162634 !important;
+    color: #E0F0F8 !important;
+    border: 1px solid #1A3040 !important;
 }
-label, .stRadio label, .stCheckbox label { color: #A0B4C8 !important; }
+label, .stRadio label, .stCheckbox label { color: #5A8FA8 !important; }
 
 /* ── טבלאות ── */
 [data-testid="stDataFrame"] {
-    background: #1A2F4A;
+    background: #162634;
     border-radius: 10px;
 }
 [data-testid="stDataFrame"] th {
-    background: #0F1B2D !important;
-    color: #4A9EFF !important;
+    background: #0F1923 !important;
+    color: #00C9A7 !important;
 }
-[data-testid="stDataFrame"] td { color: #FFFFFF !important; }
+[data-testid="stDataFrame"] td { color: #E0F0F8 !important; }
 
 /* ── כותרות ── */
-h1, h2, h3, h4 { color: #FFFFFF !important; }
-p, span, div { color: #A0B4C8; }
+h1, h2, h3, h4 { color: #E0F0F8 !important; }
+p, span, div { color: #5A8FA8; }
 
 /* ── מפרידים ── */
-hr { border-color: #1A2F4A; }
+hr { border-color: #1A3040; }
 
 /* ── Expander ── */
-details { background: #1A2F4A; border-radius: 10px; border: none !important; }
-summary { color: #FFFFFF !important; }
+details { background: #162634; border-radius: 10px; border: 1px solid #1A3040 !important; }
+summary { color: #E0F0F8 !important; }
 
 /* ── Progress ── */
-.stProgress > div > div { background-color: #4A9EFF; }
-.stProgress > div { background-color: #1A2F4A; }
+.stProgress > div > div { background-color: #00C9A7; }
+.stProgress > div { background-color: #1A3040; }
 
 /* ── Info/Success/Warning boxes ── */
-.stAlert { background-color: #1A2F4A; border-radius: 10px; }
+.stAlert { background-color: #162634; border-radius: 10px; }
 
 /* ── מובייל ── */
 @media (max-width: 768px) {
@@ -277,7 +277,7 @@ def login_page():
     col1, col2, col3 = st.columns([1, 1.2, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color:#FFFFFF;text-align:center'>💰 דשבורד הוצאות</h2>",
+        st.markdown("<h2 style='color:#E0F0F8;text-align:center'>💰 דשבורד הוצאות</h2>",
                     unsafe_allow_html=True)
         st.markdown("---")
         username = st.text_input("שם משתמש", placeholder="הכנס שם משתמש")
@@ -352,7 +352,7 @@ def tab_overview(df, df_prev, budgets):
             fig = px.pie(cat_df, values="amount", names="category",
                          color_discrete_sequence=colors, hole=0.42)
             fig.update_traces(textinfo="percent+label", textposition="inside", textfont_size=12,
-                              textfont_color="#FFFFFF")
+                              textfont_color="#E0F0F8")
             fig.update_layout(showlegend=False, height=340, **PLOT_LAYOUT)
             st.plotly_chart(fig, use_container_width=True, key="pie_overview")
 
@@ -364,12 +364,12 @@ def tab_overview(df, df_prev, budgets):
                 prev = df_prev.groupby("category")["amount"].sum()
                 cmp = pd.DataFrame({"החודש": curr, "חודש קודם": prev}).fillna(0).reset_index()
                 fig2 = go.Figure([
-                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color="#4A9EFF"),
-                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color="#1A2F4A",
-                           marker_line_color="#4A9EFF", marker_line_width=1),
+                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color="#00C9A7"),
+                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color="#1A3040",
+                           marker_line_color="#00C9A7", marker_line_width=1),
                 ])
                 fig2.update_layout(barmode="group", xaxis_tickangle=-25,
-                                   legend=dict(orientation="h", font_color="#A0B4C8"),
+                                   legend=dict(orientation="h", font_color="#5A8FA8"),
                                    height=340, **PLOT_LAYOUT)
                 st.plotly_chart(fig2, use_container_width=True, key="bar_compare")
             else:
@@ -397,7 +397,7 @@ def tab_trends(df_all):
 
     with st.container():
         fig = px.line(pts, x="period", y="amount", markers=True,
-                      color_discrete_sequence=["#4A9EFF"],
+                      color_discrete_sequence=["#00C9A7"],
                       labels={"period": "תאריך", "amount": "סכום (₪)"})
         fig.update_traces(line_width=2.5, marker_size=7,
                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>")
@@ -418,10 +418,10 @@ def tab_trends(df_all):
 
     with st.container():
         fig2 = px.bar(monthly, x="label", y="amount", text="amount",
-                      color_discrete_sequence=["#4A9EFF"],
+                      color_discrete_sequence=["#00C9A7"],
                       labels={"label": "חודש", "amount": "סכום (₪)"})
         fig2.update_traces(texttemplate="₪%{text:,.0f}", textposition="outside",
-                           textfont_color="#FFFFFF")
+                           textfont_color="#E0F0F8")
         fig2.update_layout(xaxis_title="חודש", yaxis_title="סכום (₪)",
                            yaxis_tickformat=",.0f", height=300, **PLOT_LAYOUT)
         st.plotly_chart(fig2, use_container_width=True, key="bar_monthly")
@@ -510,7 +510,7 @@ def tab_table(df_all):
             st.success(f"נמחקו {len(to_delete)} הוצאות!")
             st.rerun()
     with col_info:
-        st.markdown(f"<span style='color:#A0B4C8'>סה\"כ: <b style='color:#4A9EFF'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
+        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
                     unsafe_allow_html=True)
 
 
@@ -556,12 +556,12 @@ def tab_budget(df, selected_month, user_id, group_id=0):
         color = "#FF6B6B" if pct > 0.9 else "#FFB347" if pct > 0.7 else "#50C878"
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.markdown(f"<span style='color:#FFFFFF;font-weight:600'>{cat}</span>",
+            st.markdown(f"<span style='color:#E0F0F8;font-weight:600'>{cat}</span>",
                         unsafe_allow_html=True)
             st.progress(pct)
         with col2:
             st.markdown(f"<span style='color:{color};font-weight:600'>₪{spent:,.0f}</span>"
-                        f"<span style='color:#A0B4C8'> / ₪{budget:,.0f}</span>",
+                        f"<span style='color:#5A8FA8'> / ₪{budget:,.0f}</span>",
                         unsafe_allow_html=True)
 
 
@@ -592,7 +592,7 @@ def tab_shared(selected_month):
     with col1:
         with st.container():
             fig = px.pie(totals, values="amount", names="user_name",
-                         color_discrete_sequence=["#4A9EFF", "#7B68EE", "#50C878", "#FFB347", "#FF6B6B"])
+                         color_discrete_sequence=["#00C9A7", "#3DD6F5", "#56E39F", "#FFB347", "#FF6B6B"])
             fig.update_layout(height=300, **PLOT_LAYOUT)
             st.plotly_chart(fig, use_container_width=True, key="pie_shared")
 
@@ -600,11 +600,11 @@ def tab_shared(selected_month):
         st.markdown("#### סיכום")
         for _, row in totals.iterrows():
             st.markdown(
-                f"<span style='color:#FFFFFF;font-weight:600'>{row['user_name']}:</span> "
-                f"<span style='color:#4A9EFF'>₪{row['amount']:,.0f}</span> "
-                f"<span style='color:#A0B4C8'>({row['אחוז']}%)</span>",
+                f"<span style='color:#E0F0F8;font-weight:600'>{row['user_name']}:</span> "
+                f"<span style='color:#00C9A7'>₪{row['amount']:,.0f}</span> "
+                f"<span style='color:#5A8FA8'>({row['אחוז']}%)</span>",
                 unsafe_allow_html=True)
-        st.markdown(f"<span style='color:#A0B4C8'>סה\"כ משותף: <b style='color:#4A9EFF'>₪{grand:,.0f}</b></span>",
+        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ משותף: <b style='color:#00C9A7'>₪{grand:,.0f}</b></span>",
                     unsafe_allow_html=True)
 
     st.markdown("---")
@@ -770,7 +770,7 @@ def main():
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
     with col_title:
-        st.markdown(f"<h2 style='color:#FFFFFF;margin:0'>💰 דשבורד הוצאות — {month_label}</h2>",
+        st.markdown(f"<h2 style='color:#E0F0F8;margin:0'>💰 דשבורד הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6 = st.tabs(
