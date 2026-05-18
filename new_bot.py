@@ -1,0 +1,326 @@
+import json
+import os
+import base64
+import tempfile
+from datetime import datetime
+from collections import defaultdict
+from dotenv import load_dotenv
+from groq import Groq
+from supabase import create_client
+from telegram import Update
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler
+
+load_dotenv()
+
+TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
+GROQ_API_KEY = os.environ['GROQ_API_KEY']
+ACCESS_PASSWORD = os.environ['ACCESS_PASSWORD']
+SUPABASE_URL = os.environ['SUPABASE_URL']
+SUPABASE_KEY = os.environ['SUPABASE_KEY']
+
+client = Groq(api_key=GROQ_API_KEY)
+db = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
+
+password_attempts = {}
+pending_reset = set()
+pending_username = set()
+MAX_ATTEMPTS = 5
+
+
+def is_authorized(user_id):
+    result = db.table('authorized_users').select('user_id').eq('user_id', user_id).execute()
+    return len(result.data) > 0
+
+
+def authorize_user(user_id):
+    db.table('authorized_users').upsert({'user_id': user_id}).execute()
+
+
+def save_username(user_id, username):
+    db.table('authorized_users').update({'username': username}).eq('user_id', user_id).execute()
+
+
+def get_monthly_report(user_id):
+    month = datetime.now().strftime("%Y-%m")
+    result = db.table('expenses').select('category,amount').eq('user_id', user_id).like('date', f'{month}%').execute()
+    rows = result.data
+    if not rows:
+        return "אין לך הוצאות רשומות לחודש זה."
+    totals = defaultdict(float)
+    for row in rows:
+        totals[row['category']] += row['amount']
+    sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
+    report = f"📊 *סיכום הוצאות ל-{datetime.now().strftime('%m/%Y')}:*\n\n"
+    total = sum(totals.values())
+    for cat, amt in sorted_totals:
+        report += f"▫️ *{cat}:* {amt:,.2f} ש\"ח\n"
+    report += f"\n💰 *סה\"כ: {total:,.2f} ש\"ח*"
+    return report
+
+
+def get_last_expenses(user_id):
+    result = db.table('expenses').select('item,amount,category,date').eq('user_id', user_id).order('id', desc=True).limit(10).execute()
+    rows = result.data
+    if not rows:
+        return "אין לך הוצאות רשומות עדיין."
+    text = "🧾 *10 ההוצאות האחרונות שלך:*\n\n"
+    for row in rows:
+        text += f"• {row['item']} — *{row['amount']:,.0f} ש\"ח* ({row['category']}) [{row['date'][:10]}]\n"
+    return text
+
+
+def save_expense(user_id, amount, category, item):
+    db.table('expenses').insert({
+        'user_id': user_id,
+        'amount': amount,
+        'category': category,
+        'item': item,
+        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    }).execute()
+
+
+def analyze_text_with_ai(user_text):
+    categories_str = ", ".join(CATEGORIES)
+    system_prompt = (
+        f"Return ONLY JSON with keys: 'amount' (number), 'category' (Hebrew string), 'item' (Hebrew string). "
+        f"You MUST use ONLY one of these exact categories: {categories_str}. "
+        f"Do NOT create new categories. If unsure, use 'אחר'."
+    )
+    completion = client.chat.completions.create(
+        model="llama-3.3-70b-versatile",
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": f"Analyze: {user_text}"}
+        ],
+        response_format={"type": "json_object"}
+    )
+    data = json.loads(completion.choices[0].message.content)
+    if data.get('category') not in CATEGORIES:
+        data['category'] = 'אחר'
+    return data
+
+
+async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    help_text = (
+        "👋 *שלום! אני הבוט לניהול ההוצאות שלך*\n\n"
+        "אני עוזר לך לעקוב אחרי ההוצאות היומיות שלך בקלות — "
+        "פשוט כתוב לי במשפט רגיל מה קנית, ואני אדאג לשאר.\n\n"
+        "━━━━━━━━━━━━━━━\n"
+        "📝 *רישום הוצאה*\n"
+        "• טקסט: _קפה 15 שקל_\n"
+        "• הקלטה קולית: פשוט תדבר\n"
+        "• תמונת קבלה: שלח תמונה של הקבלה\n\n"
+        "━━━━━━━━━━━━━━━\n"
+        "📊 *צפייה בנתונים*\n"
+        "• *דוח* — סיכום הוצאות לפי קטגוריה החודש\n"
+        "• *מה קניתי* — 10 ההוצאות האחרונות\n\n"
+        "━━━━━━━━━━━━━━━\n"
+        "🛠️ *ניהול*\n"
+        "• *טעות* — מחיקת ההוצאה האחרונה\n"
+        "• *איפוס* — מחיקת כל הנתונים שלך\n"
+        "• *עזרה* — הצגת הודעה זו\n\n"
+        "━━━━━━━━━━━━━━━\n"
+        "🗂️ *קטגוריות:*\n"
+        "אוכל ושתייה | קניות וסופר | תחבורה ודלק\n"
+        "פנאי ובילוי | חשבונות ובית | בריאות | אחר"
+    )
+    await update.message.reply_text(help_text, parse_mode='Markdown')
+
+
+async def check_auth(update: Update, user_text: str) -> bool:
+    user_id = update.message.from_user.id
+    if is_authorized(user_id):
+        return True
+    attempts = password_attempts.get(user_id, 0)
+    if attempts >= MAX_ATTEMPTS:
+        await update.message.reply_text("🚫 חשבונך נחסם עקב יותר מדי ניסיונות כושלים.")
+        return False
+    if user_text == ACCESS_PASSWORD:
+        authorize_user(user_id)
+        password_attempts.pop(user_id, None)
+        pending_username.add(user_id)
+        await update.message.reply_text("✅ הסיסמה נכונה! ברוך הבא.\n\nאיך קוראים לך? (שלח את שמך)")
+    else:
+        password_attempts[user_id] = attempts + 1
+        remaining = MAX_ATTEMPTS - password_attempts[user_id]
+        if remaining > 0:
+            await update.message.reply_text(f"🔐 הבוט נעול. נא להזין סיסמה. נותרו {remaining} ניסיונות.")
+        else:
+            await update.message.reply_text("🚫 חשבונך נחסם עקב יותר מדי ניסיונות כושלים.")
+    return False
+
+
+async def process_and_save(update: Update, user_id: int, text: str):
+    try:
+        data = analyze_text_with_ai(text)
+        amount = data.get('amount', 0)
+        category = data.get('category', 'אחר')
+        item = data.get('item', 'לא ידוע')
+        if amount > 0:
+            save_expense(user_id, amount, category, item)
+            await update.message.reply_text(
+                f"✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text(
+                "לא הצלחתי לזהות סכום. נסה לנסח מחדש, למשל: _קפה 15 שקל_",
+                parse_mode='Markdown'
+            )
+    except Exception:
+        await update.message.reply_text("אירעה שגיאה בעיבוד הבקשה. נסה שוב.")
+
+
+async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    user_id = update.message.from_user.id
+    if not await check_auth(update, ""):
+        return
+    await update.message.reply_chat_action("typing")
+    try:
+        voice_file = await update.message.voice.get_file()
+        with tempfile.NamedTemporaryFile(suffix=".ogg", delete=False) as tmp:
+            tmp_path = tmp.name
+        await voice_file.download_to_drive(tmp_path)
+        with open(tmp_path, 'rb') as f:
+            transcription = client.audio.transcriptions.create(
+                model="whisper-large-v3",
+                file=f,
+                language="he"
+            )
+        os.unlink(tmp_path)
+        transcribed_text = transcription.text
+        await update.message.reply_text(f"🎙️ שמעתי: _{transcribed_text}_", parse_mode='Markdown')
+        await process_and_save(update, user_id, transcribed_text)
+    except Exception:
+        await update.message.reply_text("אירעה שגיאה בעיבוד ההקלטה. נסה שוב.")
+
+
+async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
+    user_id = update.message.from_user.id
+    if not await check_auth(update, ""):
+        return
+    await update.message.reply_chat_action("typing")
+    try:
+        photo = update.message.photo[-1]
+        photo_file = await photo.get_file()
+        with tempfile.NamedTemporaryFile(suffix=".jpg", delete=False) as tmp:
+            tmp_path = tmp.name
+        await photo_file.download_to_drive(tmp_path)
+        with open(tmp_path, 'rb') as f:
+            image_data = base64.b64encode(f.read()).decode('utf-8')
+        os.unlink(tmp_path)
+        categories_str = ", ".join(CATEGORIES)
+        completion = client.chat.completions.create(
+            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
+                    {"type": "text", "text": (
+                        f"This is a receipt. Extract the expense info. "
+                        f"Return ONLY JSON with keys: 'amount' (total number in ILS), "
+                        f"'category' (Hebrew string), 'item' (Hebrew string describing what was purchased). "
+                        f"You MUST use ONLY one of these exact categories: {categories_str}. "
+                        f"Do NOT create new categories. If unsure, use 'אחר'."
+                    )}
+                ]
+            }],
+            response_format={"type": "json_object"}
+        )
+        data = json.loads(completion.choices[0].message.content)
+        amount = data.get('amount', 0)
+        category = data.get('category', 'אחר')
+        if category not in CATEGORIES:
+            category = 'אחר'
+        item = data.get('item', 'לא ידוע')
+        if amount > 0:
+            save_expense(user_id, amount, category, item)
+            await update.message.reply_text(
+                f"🧾 קבלה זוהתה!\n✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}",
+                parse_mode='Markdown'
+            )
+        else:
+            await update.message.reply_text("לא הצלחתי לזהות סכום בקבלה. נסה לצלם שוב בצורה ברורה יותר.")
+    except Exception:
+        await update.message.reply_text("אירעה שגיאה בעיבוד הקבלה. נסה שוב.")
+
+
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.text:
+        return
+    user_id = update.message.from_user.id
+    user_text = update.message.text.strip()
+
+    if not await check_auth(update, user_text):
+        return
+
+    # שמירת שם משתמש
+    if user_id in pending_username:
+        pending_username.discard(user_id)
+        save_username(user_id, user_text)
+        await update.message.reply_text(
+            f"👋 שלום {user_text}! שמחים שהצטרפת.\n\nשלח *עזרה* להוראות שימוש.",
+            parse_mode='Markdown'
+        )
+        return
+
+    # אישור איפוס
+    if user_id in pending_reset:
+        pending_reset.discard(user_id)
+        if user_text in ["כן", "אישור", "מאשר"]:
+            db.table('expenses').delete().eq('user_id', user_id).execute()
+            await update.message.reply_text("🗑️ כל הנתונים שלך נמחקו.")
+        else:
+            await update.message.reply_text("❌ האיפוס בוטל.")
+        return
+
+    if any(k in user_text for k in ["עזרה", "help"]):
+        await start_help(update, context)
+        return
+
+    if any(k in user_text for k in ["דוח", "סיכום", "כמה בזבזתי"]):
+        await update.message.reply_text(get_monthly_report(user_id), parse_mode='Markdown')
+        return
+
+    if "מה קניתי" in user_text:
+        await update.message.reply_text(get_last_expenses(user_id), parse_mode='Markdown')
+        return
+
+    if any(k in user_text for k in ["מחק הוצאה אחרונה", "טעות", "בטל"]):
+        result = db.table('expenses').select('id,item,amount').eq('user_id', user_id).order('id', desc=True).limit(1).execute()
+        if result.data:
+            row = result.data[0]
+            db.table('expenses').delete().eq('id', row['id']).execute()
+            await update.message.reply_text(f"🗑️ נמחק: {row['item']} ({row['amount']:,.0f} ש\"ח).")
+        else:
+            await update.message.reply_text("לא נמצאו הוצאות למחיקה.")
+        return
+
+    if "איפוס" in user_text:
+        pending_reset.add(user_id)
+        await update.message.reply_text(
+            "⚠️ האם אתה בטוח שברצונך למחוק את *כל* ההוצאות שלך?\n\n"
+            "שלח *כן* לאישור או כל הודעה אחרת לביטול.",
+            parse_mode='Markdown'
+        )
+        return
+
+    await update.message.reply_chat_action("typing")
+    await process_and_save(update, user_id, user_text)
+
+
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
+    app.add_handler(CommandHandler("start", start_help))
+    app.add_handler(CommandHandler("help", start_help))
+    app.add_handler(MessageHandler(filters.VOICE, handle_voice))
+    app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
+    app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
+    print("🚀 הבוט רץ!")
+    app.run_polling()
