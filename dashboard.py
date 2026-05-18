@@ -162,10 +162,6 @@ summary { color: #E0F0F8 !important; }
     .metric-card { padding: 0.8rem 0.5rem !important; }
     .stTabs [data-baseweb="tab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
     h1, h2, h3 { font-size: 1.1rem !important; }
-    /* Data editor: force all cells narrow so all columns show on small screens */
-    [data-testid="stDataFrameResizable"] { font-size: 0.75rem !important; }
-    [data-testid="stDataFrameResizable"] th,
-    [data-testid="stDataFrameResizable"] td { padding: 2px 4px !important; }
 }
 </style>
 """, unsafe_allow_html=True)
@@ -722,11 +718,11 @@ def tab_table(df_all, user_id, selected_month, display_name):
         hide_index=True,
         column_config={
             "id": None,
-            "מחק": st.column_config.CheckboxColumn("🗑️", default=False, width="small"),
-            "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True, width="small"),
-            "פריט": st.column_config.TextColumn(required=True, width="small"),
-            "סכום (₪)": st.column_config.NumberColumn(min_value=0, format="₪%.0f", required=True, width="small"),
-            "תאריך": st.column_config.DateColumn(format="DD/MM/YYYY", required=True, width="small"),
+            "מחק": st.column_config.CheckboxColumn("🗑️", default=False),
+            "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True),
+            "פריט": st.column_config.TextColumn(required=True),
+            "סכום (₪)": st.column_config.NumberColumn(min_value=0, format="₪%.0f", required=True),
+            "תאריך": st.column_config.DateColumn(format="DD/MM/YYYY", required=True),
         },
         key="expense_editor"
     )
