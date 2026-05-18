@@ -427,15 +427,17 @@ async def send_monthly_summaries(bot):
             pass
 
 
-if __name__ == '__main__':
-    app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
-
+async def post_init(application):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
-        lambda: app.create_task(send_monthly_summaries(app.bot)),
+        lambda: application.create_task(send_monthly_summaries(application.bot)),
         'cron', day='last', hour=20, minute=0
     )
     scheduler.start()
+
+
+if __name__ == '__main__':
+    app = ApplicationBuilder().token(TELEGRAM_TOKEN).post_init(post_init).build()
 
     app.add_handler(CommandHandler("start", start_help))
     app.add_handler(CommandHandler("help", start_help))
