@@ -30,7 +30,7 @@ PLOT_LAYOUT = dict(
     margin=dict(l=0, r=0, t=10, b=0),
 )
 
-st.set_page_config(page_title="דשבורד הוצאות", page_icon="💰", layout="wide")
+st.set_page_config(page_title="דשבורד הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
@@ -93,11 +93,16 @@ html, body, [class*="css"] {
 section[data-testid="stSidebar"] {
     background: #0A1628 !important;
     border-left: 1px solid #1A2F4A;
+    right: 0 !important;
+    left: auto !important;
 }
 section[data-testid="stSidebar"] * { color: #A0B4C8 !important; }
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
 section[data-testid="stSidebar"] h3 { color: #FFFFFF !important; }
+
+/* ── מניעת overlap של sidebar ── */
+.main { margin-right: 0 !important; }
 
 /* ── Inputs ── */
 .stTextInput input, .stSelectbox select, .stNumberInput input {
