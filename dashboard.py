@@ -43,7 +43,13 @@ html, body, [class*="css"] {
 
 /* ── רקע ראשי ── */
 .stApp { background-color: #0F1B2D; }
-.block-container { padding-top: 1.2rem; background-color: #0F1B2D; }
+.block-container { padding-top: 4rem; background-color: #0F1B2D; }
+
+/* ── הסתרת toolbar של Streamlit ── */
+header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
+#MainMenu { visibility: hidden; }
+footer { visibility: hidden; }
+[data-testid="stToolbar"] { display: none; }
 
 /* ── כרטיסי מטריקה ── */
 .metric-card {
