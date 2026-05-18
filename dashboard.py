@@ -310,17 +310,22 @@ def generate_pdf(df, selected_month, display_name):
         return get_display(str(text))
 
     font_path = get_hebrew_font_path()
+    has_heb = font_path is not None
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
 
     pdf = FPDF()
-    pdf.set_auto_page_break(auto=True, margin=15)
+    pdf.set_auto_page_break(auto=False)
     pdf.add_page()
 
-    if font_path:
+    if has_heb:
         pdf.add_font("Heb", "", font_path)
-        fn = "Heb"
-    else:
-        fn = "Helvetica"
+
+    # Use Hebrew font for Hebrew, Helvetica for numbers/dates/Latin
+    def set_heb(size):
+        pdf.set_font("Heb" if has_heb else "Helvetica", size=size)
+
+    def set_num(size):
+        pdf.set_font("Helvetica", size=size)
 
     def bg_page():
         pdf.set_fill_color(15, 25, 35)
@@ -330,147 +335,144 @@ def generate_pdf(df, selected_month, display_name):
 
     # ── Title bar ──
     pdf.set_fill_color(22, 38, 52)
-    pdf.rect(0, 0, 210, 28, "F")
-    pdf.set_xy(10, 6)
-    pdf.set_font(fn, size=18)
+    pdf.rect(0, 0, 210, 30, "F")
+
+    set_num(16)
     pdf.set_text_color(0, 201, 167)
-    pdf.cell(0, 10, heb(f"דוח הוצאות  {month_label}"), align="R")
-    pdf.set_xy(10, 17)
-    pdf.set_font(fn, size=9)
+    pdf.set_xy(10, 5)
+    pdf.cell(0, 10, f"Expense Report  {month_label}", align="R")
+
+    set_heb(9)
     pdf.set_text_color(90, 143, 168)
+    pdf.set_xy(10, 18)
     pdf.cell(0, 7, heb(display_name), align="R")
-    pdf.set_y(34)
+
+    pdf.set_y(38)
+    x0 = 10
 
     # ── Summary cards ──
     if not df.empty:
-        total = df["amount"].sum()
+        total     = df["amount"].sum()
         daily_avg = total / max(df["date"].dt.date.nunique(), 1)
-        top_cat = df.groupby("category")["amount"].sum().idxmax()
-        top_cat_amt = df.groupby("category")["amount"].sum().max()
+        top_cat   = df.groupby("category")["amount"].sum().idxmax()
 
-        card_w = 58
-        card_h = 20
-        card_x = [10, 76, 142]
-        labels = [heb("סה\"כ"), heb("ממוצע יומי"), heb("קטגוריה מובילה")]
-        values = [f"{total:,.0f}", f"{daily_avg:,.0f}", f"{top_cat_amt:,.0f}"]
-        sub_labels = ["", "", heb(str(top_cat))]
+        card_data = [
+            (heb('סה"כ'),          f"{total:,.0f} ILS"),
+            (heb("ממוצע יומי"),    f"{daily_avg:,.0f} ILS"),
+            (heb("קטגוריה מובילה"), heb(str(top_cat))),
+        ]
+        card_w, card_h = 58, 22
+        card_xs = [10, 76, 142]
+        card_y = pdf.get_y()
 
-        for idx, (x, lbl, val, sub) in enumerate(zip(card_x, labels, values, sub_labels)):
+        for cx, (lbl, val) in zip(card_xs, card_data):
+            # Card background
             pdf.set_fill_color(26, 48, 64)
-            pdf.rect(x, pdf.get_y(), card_w, card_h, "F")
+            pdf.rect(cx, card_y, card_w, card_h, "F")
+            # Accent top border
             pdf.set_fill_color(0, 201, 167)
-            pdf.rect(x, pdf.get_y(), card_w, 2, "F")
-
-            pdf.set_xy(x, pdf.get_y() + 3)
-            pdf.set_font(fn, size=7)
+            pdf.rect(cx, card_y, card_w, 2, "F")
+            # Label
+            set_heb(7)
             pdf.set_text_color(90, 143, 168)
+            pdf.set_xy(cx, card_y + 4)
             pdf.cell(card_w, 5, lbl, align="C")
-
-            pdf.set_xy(x, pdf.get_y() + 5)
-            pdf.set_font(fn, size=12)
+            # Value
+            set_num(11)
             pdf.set_text_color(224, 240, 248)
-            pdf.cell(card_w, 7, val, align="C")
+            pdf.set_xy(cx, card_y + 11)
+            pdf.cell(card_w, 8, val, align="C")
 
-            if sub:
-                pdf.set_xy(x, pdf.get_y() + 7)
-                pdf.set_font(fn, size=7)
-                pdf.set_text_color(0, 201, 167)
-                pdf.cell(card_w, 4, sub, align="C")
+        pdf.set_y(card_y + card_h + 6)
 
-        pdf.set_y(pdf.get_y() + card_h + 2)
-        pdf.ln(4)
-
-    # ── Table header ──
+    # ── Table ──
     COL_DATE = 28
-    COL_ITEM = 72
-    COL_CAT  = 50
-    COL_AMT  = 40
-    total_w  = COL_DATE + COL_ITEM + COL_CAT + COL_AMT  # 190
+    COL_AMT  = 38
+    COL_CAT  = 48
+    COL_ITEM = 76   # 28+38+48+76 = 190
 
-    pdf.set_fill_color(0, 201, 167)
-    pdf.set_text_color(15, 25, 35)
-    pdf.set_font(fn, size=9)
-    x0 = 10
-    pdf.set_x(x0)
-    pdf.cell(COL_DATE, 9, heb("תאריך"), fill=True, align="C")
-    pdf.cell(COL_ITEM, 9, heb("פריט"), fill=True, align="C")
-    pdf.cell(COL_CAT,  9, heb("קטגוריה"), fill=True, align="C")
-    pdf.cell(COL_AMT,  9, heb("סכום (ש\"ח)"), fill=True, align="C")
-    pdf.ln()
+    def draw_table_header():
+        pdf.set_fill_color(0, 201, 167)
+        pdf.set_text_color(15, 25, 35)
+        set_heb(9)
+        pdf.set_x(x0)
+        pdf.cell(COL_DATE, 9, heb("תאריך"),    fill=True, align="C")
+        pdf.cell(COL_ITEM, 9, heb("פריט"),      fill=True, align="C")
+        pdf.cell(COL_CAT,  9, heb("קטגוריה"),  fill=True, align="C")
+        set_num(9)
+        pdf.cell(COL_AMT,  9, "Amount (ILS)",   fill=True, align="C")
+        pdf.ln()
 
-    # ── Rows ──
+    draw_table_header()
+
     if not df.empty:
-        pdf.set_font(fn, size=8)
         row_h = 8
         for i, (_, row) in enumerate(df.sort_values("date", ascending=False).iterrows()):
             if pdf.get_y() > 265:
                 pdf.add_page()
                 bg_page()
                 pdf.set_y(15)
-                # Reprint header on new page
-                pdf.set_fill_color(0, 201, 167)
-                pdf.set_text_color(15, 25, 35)
-                pdf.set_font(fn, size=9)
-                pdf.set_x(x0)
-                pdf.cell(COL_DATE, 9, heb("תאריך"), fill=True, align="C")
-                pdf.cell(COL_ITEM, 9, heb("פריט"), fill=True, align="C")
-                pdf.cell(COL_CAT,  9, heb("קטגוריה"), fill=True, align="C")
-                pdf.cell(COL_AMT,  9, heb("סכום (ש\"ח)"), fill=True, align="C")
-                pdf.ln()
-                pdf.set_font(fn, size=8)
+                draw_table_header()
 
             fill_r, fill_g, fill_b = (22, 38, 52) if i % 2 == 0 else (18, 30, 42)
             pdf.set_fill_color(fill_r, fill_g, fill_b)
-            pdf.set_text_color(224, 240, 248)
 
             date_str = row["date"].strftime("%d/%m/%Y") if hasattr(row["date"], "strftime") else str(row["date"])[:10]
-            item_str = str(row["item"])[:28] if row["item"] else ""
+            item_str = str(row["item"])[:30] if row["item"] else ""
             cat_str  = str(row["category"]) if row["category"] else ""
             amt_str  = f"{float(row['amount']):,.0f}"
 
             pdf.set_x(x0)
-            pdf.cell(COL_DATE, row_h, date_str,       fill=True, align="C")
-            pdf.cell(COL_ITEM, row_h, heb(item_str),  fill=True, align="R")
-            pdf.cell(COL_CAT,  row_h, heb(cat_str),   fill=True, align="R")
-            # Amount in accent color so it pops
+            # Date — Helvetica (LTR numbers)
+            set_num(8)
+            pdf.set_text_color(200, 220, 235)
+            pdf.cell(COL_DATE, row_h, date_str, fill=True, align="C")
+            # Item — Hebrew font
+            set_heb(8)
+            pdf.set_text_color(200, 220, 235)
+            pdf.cell(COL_ITEM, row_h, heb(item_str), fill=True, align="R")
+            # Category — Hebrew font
+            pdf.cell(COL_CAT, row_h, heb(cat_str), fill=True, align="R")
+            # Amount — Helvetica, accent color
+            set_num(9)
             pdf.set_text_color(0, 201, 167)
-            pdf.cell(COL_AMT,  row_h, amt_str,         fill=True, align="C")
+            pdf.cell(COL_AMT, row_h, amt_str, fill=True, align="C")
             pdf.ln()
 
     # ── Category totals ──
     if not df.empty:
-        pdf.ln(6)
-        pdf.set_x(x0)
+        pdf.ln(8)
+        set_heb(11)
         pdf.set_text_color(0, 201, 167)
-        pdf.set_font(fn, size=11)
+        pdf.set_x(x0)
         pdf.cell(0, 8, heb("סיכום לפי קטגוריה"), align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
 
         totals = df.groupby("category")["amount"].sum().sort_values(ascending=False)
-        grand = totals.sum()
-        bar_max_w = 130
+        grand  = totals.sum()
 
         for cat, amt in totals.items():
-            bar_fill = int(bar_max_w * amt / grand) if grand > 0 else 0
-            pdf.set_fill_color(26, 48, 64)
+            bar_w = int(120 * amt / grand) if grand > 0 else 0
             pdf.set_x(x0)
             # Category name
-            pdf.set_font(fn, size=9)
+            set_heb(9)
+            pdf.set_fill_color(26, 48, 64)
             pdf.set_text_color(224, 240, 248)
-            pdf.cell(120, 7, heb(str(cat)), fill=True, align="R")
+            pdf.cell(130, 7, heb(str(cat)), fill=True, align="R")
             # Amount
-            pdf.set_text_color(0, 201, 167)
+            set_num(9)
             pdf.set_fill_color(22, 38, 52)
-            pdf.cell(60, 7, f"{amt:,.0f}", fill=True, align="C")
+            pdf.set_text_color(0, 201, 167)
+            pdf.cell(50, 7, f"{amt:,.0f}", fill=True, align="C")
             pdf.ln()
-            # Mini progress bar
+            # Progress bar
             pdf.set_x(x0)
             pdf.set_fill_color(26, 48, 64)
             pdf.cell(180, 2, "", fill=True)
-            pdf.set_xy(x0, pdf.get_y() - 2)
-            pdf.set_fill_color(0, 201, 167)
-            if bar_fill > 0:
-                pdf.cell(bar_fill, 2, "", fill=True)
+            if bar_w > 0:
+                pdf.set_xy(x0, pdf.get_y() - 2)
+                pdf.set_fill_color(0, 201, 167)
+                pdf.cell(bar_w, 2, "", fill=True)
             pdf.ln(3)
 
     return bytes(pdf.output())
