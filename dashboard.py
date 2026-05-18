@@ -168,10 +168,12 @@ def hash_pw(pw: str) -> str:
 
 
 @st.cache_data(ttl=30)
-def fetch_expenses(user_id=None, month=None, all_users=False):
+def fetch_expenses(user_id=None, month=None, all_users=False, user_ids=None):
     db = get_db()
     query = db.table("expenses").select("*")
-    if not all_users and user_id:
+    if user_ids:
+        query = query.in_("user_id", list(user_ids))
+    elif not all_users and user_id:
         query = query.eq("user_id", user_id)
     if month:
         query = query.like("date", f"{month}%")
@@ -196,6 +198,44 @@ def fetch_budget(user_id, month):
     db = get_db()
     result = db.table("budgets").select("*").eq("user_id", user_id).eq("month", month).execute()
     return {row["category"]: row["amount"] for row in (result.data or [])}
+
+
+def fetch_groups(user_id):
+    db = get_db()
+    member_rows = db.table("group_members").select("group_id").eq("user_id", user_id).execute()
+    group_ids = [r["group_id"] for r in (member_rows.data or [])]
+    if not group_ids:
+        return []
+    return db.table("groups").select("*").in_("id", group_ids).execute().data or []
+
+
+def fetch_group_members(group_id):
+    db = get_db()
+    rows = db.table("group_members").select("user_id").eq("group_id", group_id).execute()
+    return [r["user_id"] for r in (rows.data or [])]
+
+
+def create_group(name, created_by):
+    db = get_db()
+    result = db.table("groups").insert({"name": name, "created_by": created_by}).execute()
+    group_id = result.data[0]["id"]
+    db.table("group_members").insert({"group_id": group_id, "user_id": created_by}).execute()
+    return group_id
+
+
+def add_group_member(group_id, user_id):
+    db = get_db()
+    db.table("group_members").upsert({"group_id": group_id, "user_id": user_id}).execute()
+
+
+def remove_group_member(group_id, user_id):
+    db = get_db()
+    db.table("group_members").delete().eq("group_id", group_id).eq("user_id", user_id).execute()
+
+
+def delete_group(group_id):
+    db = get_db()
+    db.table("groups").delete().eq("id", group_id).execute()
 
 
 def save_budget_to_db(user_id, month, budgets_dict):
@@ -595,6 +635,64 @@ def tab_settings():
         else:
             st.error("מלא user_id, שם משתמש וסיסמה")
 
+    st.markdown("---")
+    st.markdown("### ניהול קבוצות")
+
+    current_user_id = st.session_state.user["user_id"]
+    all_groups = fetch_groups(current_user_id)
+    all_users_list = fetch_users()
+    user_map = {u["user_id"]: u.get("username") or u.get("dashboard_username", str(u["user_id"])) for u in all_users_list}
+
+    # Show existing groups
+    if all_groups:
+        for g in all_groups:
+            with st.expander(f"👥 {g['name']}"):
+                members = fetch_group_members(g["id"])
+                member_names = [user_map.get(m, str(m)) for m in members]
+                st.markdown(f"**חברים:** {', '.join(member_names)}")
+
+                # Add member
+                non_members = [u for u in all_users_list if u["user_id"] not in members]
+                if non_members:
+                    add_options = {u["user_id"]: user_map.get(u["user_id"], str(u["user_id"])) for u in non_members}
+                    add_uid = st.selectbox("הוסף חבר", list(add_options.keys()),
+                                           format_func=lambda x: add_options[x],
+                                           key=f"add_{g['id']}")
+                    if st.button("הוסף", key=f"add_btn_{g['id']}"):
+                        add_group_member(g["id"], add_uid)
+                        st.success("נוסף!")
+                        st.rerun()
+
+                # Remove member (not creator)
+                removable = [m for m in members if m != g["created_by"]]
+                if removable:
+                    rem_options = {m: user_map.get(m, str(m)) for m in removable}
+                    rem_uid = st.selectbox("הסר חבר", list(rem_options.keys()),
+                                           format_func=lambda x: rem_options[x],
+                                           key=f"rem_{g['id']}")
+                    if st.button("הסר", key=f"rem_btn_{g['id']}"):
+                        remove_group_member(g["id"], rem_uid)
+                        st.success("הוסר!")
+                        st.rerun()
+
+                if st.button("🗑️ מחק קבוצה", key=f"del_{g['id']}"):
+                    delete_group(g["id"])
+                    st.success("הקבוצה נמחקה")
+                    st.rerun()
+    else:
+        st.info("אין קבוצות עדיין")
+
+    st.markdown("---")
+    st.markdown("#### צור קבוצה חדשה")
+    group_name = st.text_input("שם הקבוצה", key="new_group_name")
+    if st.button("צור קבוצה"):
+        if group_name:
+            create_group(group_name, current_user_id)
+            st.success(f"הקבוצה '{group_name}' נוצרה!")
+            st.rerun()
+        else:
+            st.error("הכנס שם לקבוצה")
+
 
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
@@ -613,25 +711,35 @@ def main():
         d = now.replace(day=1) - timedelta(days=i * 30)
         month_options.append(d.strftime("%Y-%m"))
 
-    col_title, col_month, col_users, col_logout = st.columns([3, 1.5, 1.2, 1])
+    groups = fetch_groups(uid)
+    group_options = ["אני בלבד"] + [g["name"] for g in groups]
+
+    col_title, col_month, col_group, col_logout = st.columns([3, 1.5, 1.5, 1])
     with col_month:
         selected_month = st.selectbox(
             "חודש", month_options,
             format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y"),
             label_visibility="collapsed"
         )
-    with col_users:
-        all_users = st.checkbox("כל המשתמשים", value=False)
+    with col_group:
+        selected_group_name = st.selectbox("קבוצה", group_options, label_visibility="collapsed")
     with col_logout:
         if st.button("התנתק", use_container_width=True):
             for k in ["logged_in", "user"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
+    # Determine which user_ids to show
+    if selected_group_name == "אני בלבד":
+        active_user_ids = None
+    else:
+        selected_group = next((g for g in groups if g["name"] == selected_group_name), None)
+        active_user_ids = fetch_group_members(selected_group["id"]) if selected_group else None
+
     prev = prev_month_str(selected_month)
-    df = fetch_expenses(user_id=uid, month=selected_month, all_users=all_users)
-    df_prev = fetch_expenses(user_id=uid, month=prev, all_users=all_users)
-    df_all = fetch_expenses(user_id=uid, all_users=all_users)
+    df = fetch_expenses(user_id=uid, month=selected_month, user_ids=active_user_ids)
+    df_prev = fetch_expenses(user_id=uid, month=prev, user_ids=active_user_ids)
+    df_all = fetch_expenses(user_id=uid, user_ids=active_user_ids)
 
     bkey = f"budget_{selected_month}"
     if bkey not in st.session_state:
