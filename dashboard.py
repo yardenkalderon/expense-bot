@@ -11,6 +11,7 @@ import tempfile
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://zqbimrpywehyfodghgan.supabase.co')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '***REMOVED***')
+GROQ_API_KEY  = os.environ.get('GROQ_API_KEY', '')
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 CAT_COLORS = {
@@ -964,6 +965,183 @@ def tab_settings():
             st.error("הכנס שם לקבוצה")
 
 
+# ── AI INSIGHTS ───────────────────────────────────────────────────────────────
+
+@st.cache_resource
+def get_groq_client():
+    from groq import Groq
+    return Groq(api_key=GROQ_API_KEY)
+
+
+def _groq_chat(messages: list) -> str:
+    try:
+        client = get_groq_client()
+        resp = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=messages,
+            max_tokens=1200,
+            temperature=0.6,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        return f"שגיאה בחיבור ל-AI: {e}"
+
+
+def _build_context(df, df_prev, budgets, month_label: str) -> str:
+    lines = [f"נתוני הוצאות לחודש {month_label}:"]
+    if df.empty:
+        lines.append("אין הוצאות רשומות לחודש זה.")
+    else:
+        total = df["amount"].sum()
+        lines.append(f"סה\"כ: ₪{total:,.0f} ({len(df)} הוצאות)")
+
+        # by category
+        lines.append("\nפירוט לפי קטגוריה:")
+        for cat, amt in df.groupby("category")["amount"].sum().sort_values(ascending=False).items():
+            pct = amt / total * 100
+            budget_val = budgets.get(cat, 0)
+            bstr = f"  (תקציב: ₪{budget_val:,.0f})" if budget_val > 0 else ""
+            lines.append(f"  • {cat}: ₪{amt:,.0f} ({pct:.0f}%){bstr}")
+
+        # vs prev month
+        if not df_prev.empty:
+            prev_total = df_prev["amount"].sum()
+            change = (total - prev_total) / prev_total * 100
+            direction = "עלייה" if change > 0 else "ירידה"
+            lines.append(f"\nהשוואה לחודש קודם: ₪{prev_total:,.0f} → ₪{total:,.0f} ({direction} של {abs(change):.0f}%)")
+            for cat in CATEGORIES:
+                c = df.groupby("category")["amount"].sum().get(cat, 0)
+                p = df_prev.groupby("category")["amount"].sum().get(cat, 0)
+                if p > 0 and abs(c - p) / p > 0.3:
+                    d = "עלה" if c > p else "ירד"
+                    lines.append(f"  • {cat} {d} ב-{abs(c-p)/p*100:.0f}%")
+
+        # top 5 expenses
+        top5 = df.nlargest(5, "amount")[["item", "category", "amount", "date"]]
+        lines.append("\n5 ההוצאות הגדולות:")
+        for _, r in top5.iterrows():
+            d = r["date"].strftime("%d/%m") if hasattr(r["date"], "strftime") else str(r["date"])[:5]
+            lines.append(f"  • {r['item']} ({r['category']}) — ₪{r['amount']:,.0f} ב-{d}")
+
+        # spending days
+        by_day = df.groupby(df["date"].dt.date)["amount"].sum().sort_values(ascending=False)
+        if len(by_day) > 0:
+            peak_day = by_day.index[0]
+            lines.append(f"\nיום הוצאה שיא: {peak_day.strftime('%d/%m/%Y')} — ₪{by_day.iloc[0]:,.0f}")
+
+    return "\n".join(lines)
+
+
+_SYSTEM_PROMPT = (
+    "אתה עוזר אישי לניהול כספים. תמיד ענה בעברית. "
+    "היה ידידותי, ספציפי עם מספרים ותן עצות מעשיות לחיסכון. "
+    "אל תמציא נתונים — השתמש רק במה שנמסר לך."
+)
+
+
+def tab_insights(df, df_prev, budgets, selected_month, display_name):
+    if not GROQ_API_KEY:
+        st.warning("⚠️ GROQ_API_KEY לא מוגדר. הוסף אותו ב-Streamlit Secrets.")
+        return
+
+    month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
+    context = _build_context(df, df_prev, budgets, month_label)
+    insight_key = f"insight_{selected_month}"
+    chat_key    = f"chat_{selected_month}"
+    if chat_key not in st.session_state:
+        st.session_state[chat_key] = []
+
+    # ── חלק א: ניתוח אוטומטי ──────────────────────────────────────────────────
+    st.markdown("### 📊 ניתוח חודשי אוטומטי")
+
+    col_refresh, col_spacer = st.columns([1, 4])
+    with col_refresh:
+        if st.button("🔄 רענן ניתוח", key="refresh_insight"):
+            st.session_state.pop(insight_key, None)
+
+    if insight_key not in st.session_state:
+        with st.spinner("מנתח את ההוצאות שלך..."):
+            prompt = (
+                f"להלן נתוני ההוצאות של {display_name} לחודש {month_label}:\n\n"
+                f"{context}\n\n"
+                "בצע ניתוח מקיף הכולל:\n"
+                "1. סיכום קצר של החודש\n"
+                "2. השוואה לחודש קודם (אם יש נתונים)\n"
+                "3. זיהוי 2-3 דפוסי הוצאה מעניינים\n"
+                "4. 3 המלצות מעשיות לחיסכון\n\n"
+                "כתוב בצורה ברורה עם כותרות ואמוג'ים."
+            )
+            result = _groq_chat([
+                {"role": "system",  "content": _SYSTEM_PROMPT},
+                {"role": "user",    "content": prompt},
+            ])
+            st.session_state[insight_key] = result
+
+    # Display insight in styled card
+    insight_text = st.session_state.get(insight_key, "")
+    if insight_text:
+        st.markdown(
+            f"""<div style='background:#162634;border-radius:12px;padding:1.4rem 1.6rem;
+            border-right:4px solid #00C9A7;direction:rtl;line-height:1.8;color:#E0F0F8;
+            font-family:Heebo,sans-serif;white-space:pre-wrap'>{insight_text}</div>""",
+            unsafe_allow_html=True
+        )
+
+    st.markdown("---")
+
+    # ── חלק ב: שאלות חופשיות ──────────────────────────────────────────────────
+    st.markdown("### 💬 שאל את ה-AI על ההוצאות שלך")
+
+    # Chat history
+    for msg in st.session_state[chat_key]:
+        if msg["role"] == "user":
+            st.markdown(
+                f"<div style='background:#1A3040;border-radius:10px;padding:0.7rem 1rem;"
+                f"margin:6px 0;direction:rtl;color:#E0F0F8;font-family:Heebo,sans-serif'>"
+                f"🙋 {msg['content']}</div>",
+                unsafe_allow_html=True
+            )
+        else:
+            st.markdown(
+                f"<div style='background:#162634;border-radius:10px;padding:0.7rem 1rem;"
+                f"margin:6px 0;border-right:3px solid #00C9A7;direction:rtl;"
+                f"color:#E0F0F8;font-family:Heebo,sans-serif;white-space:pre-wrap'>"
+                f"🤖 {msg['content']}</div>",
+                unsafe_allow_html=True
+            )
+
+    # Input
+    with st.form("chat_form", clear_on_submit=True):
+        user_q = st.text_input("שאל שאלה...",
+                               placeholder="למשל: על מה הוצאתי הכי הרבה? איפה אפשר לחסוך?",
+                               label_visibility="collapsed")
+        col_ask, col_clear, _ = st.columns([1, 1, 3])
+        with col_ask:
+            submitted = st.form_submit_button("שאל 🤖")
+        with col_clear:
+            cleared = st.form_submit_button("נקה שיחה")
+
+    if cleared:
+        st.session_state[chat_key] = []
+        st.rerun()
+
+    if submitted and user_q.strip():
+        history = st.session_state[chat_key]
+        messages = [
+            {"role": "system", "content": _SYSTEM_PROMPT + f"\n\nנתוני ההוצאות:\n{context}"},
+        ]
+        for m in history[-6:]:   # last 3 exchanges for context window
+            messages.append(m)
+        messages.append({"role": "user", "content": user_q.strip()})
+
+        with st.spinner("חושב..."):
+            answer = _groq_chat(messages)
+
+        st.session_state[chat_key].append({"role": "user",      "content": user_q.strip()})
+        st.session_state[chat_key].append({"role": "assistant", "content": answer})
+        st.rerun()
+
+
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -1023,15 +1201,16 @@ def main():
         st.markdown(f"<h2 style='color:#E0F0F8;margin:0'>💰 דשבורד הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
-    t1, t2, t3, t4, t5, t6 = st.tabs(
-        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🎯 תקציב", "👥 משותף", "⚙️ הגדרות"])
+    t1, t2, t3, t4, t5, t6, t7 = st.tabs(
+        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🎯 תקציב", "👥 משותף", "🤖 Insights", "⚙️ הגדרות"])
 
     with t1: tab_overview(df, df_prev, budgets)
     with t2: tab_trends(df_all)
     with t3: tab_table(df_all, uid, selected_month, display_name)
     with t4: tab_budget(df, selected_month, uid, active_group_id)
     with t5: tab_shared(selected_month)
-    with t6: tab_settings()
+    with t6: tab_insights(df, df_prev, budgets, selected_month, display_name)
+    with t7: tab_settings()
 
 
 if __name__ == "__main__":
