@@ -1042,7 +1042,21 @@ def tab_shared(groups, uid, selected_month):
     grand  = totals["amount"].sum()
     totals["אחוז"] = (totals["amount"] / grand * 100).round(1)
 
+    member_ids = [int(m) for m in member_ids]   # normalise types
     settlements = calculate_settlement(df, member_ids, user_map)
+    per_person  = grand / len(member_ids) if member_ids else grand
+
+    # ── member list banner ──
+    member_names = [user_map.get(m, str(m)) for m in member_ids]
+    st.markdown(
+        f"<div style='background:#1A3040;border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem'>"
+        f"<span style='color:#5A8FA8'>חברי הקבוצה ({len(member_ids)}): </span>"
+        f"<span style='color:#E0F0F8;font-weight:600'>{' · '.join(member_names)}</span>"
+        f"</div>",
+        unsafe_allow_html=True)
+
+    if len(member_ids) < 2:
+        st.warning("⚠️ הקבוצה צריכה לפחות 2 חברים לחישוב פשרה — הוסף חברים בטאב ⚙️ הגדרות")
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1060,8 +1074,10 @@ def tab_shared(groups, uid, selected_month):
                 f"<span style='color:#00C9A7'>₪{row['amount']:,.0f}</span> "
                 f"<span style='color:#5A8FA8'>({row['אחוז']}%)</span>",
                 unsafe_allow_html=True)
-        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{grand:,.0f}</b></span>",
-                    unsafe_allow_html=True)
+        st.markdown(
+            f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{grand:,.0f}</b></span>"
+            f"<span style='color:#5A8FA8'> | לאחד: <b style='color:#00C9A7'>₪{per_person:,.0f}</b></span>",
+            unsafe_allow_html=True)
 
         st.markdown("---")
         st.markdown("#### 💸 חישוב פשרה")
@@ -1076,7 +1092,7 @@ def tab_shared(groups, uid, selected_month):
                     f"<span style='color:#00C9A7;font-weight:700'> ₪{amount:,.0f}</span>"
                     f"</div>",
                     unsafe_allow_html=True)
-        else:
+        elif len(member_ids) >= 2:
             st.success("✅ הכל מחולק שווה!")
 
     st.markdown("---")
