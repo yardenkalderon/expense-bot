@@ -128,7 +128,6 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 .stSelectbox > div > div { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; }
 label, .stRadio label, .stCheckbox label { color: #A08060 !important; }
 [data-testid="stDataFrame"] { filter: invert(1) hue-rotate(180deg) !important; border-radius: 10px; border: 1px solid #3D2010; }
-[data-testid="stDataFrame"] > div { filter: invert(1) hue-rotate(180deg) !important; }
 h1, h2, h3, h4 { color: #F5E6D3 !important; }
 p, span, div { color: #A08060; }
 hr { border-color: #3D2010; }
