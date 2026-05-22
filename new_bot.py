@@ -250,6 +250,10 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         if amount > 0:
             exp_id = save_expense(user_id, amount, category, item)
             conf_text = f"✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
+            edit_del_row = [
+                InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
+                InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
+            ]
             user_groups = get_user_groups_with_names(user_id)
             if user_groups and exp_id:
                 conf_text += "\n\n*לאן לשייך?*"
@@ -257,9 +261,10 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 for g in user_groups:
                     btn_rows.append([InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")])
                 btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
+                btn_rows.append(edit_del_row)
                 await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup(btn_rows), parse_mode='Markdown')
             else:
-                await update.message.reply_text(conf_text, parse_mode='Markdown')
+                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup([edit_del_row]), parse_mode='Markdown')
             # התראת תקציב
             budget = get_category_budget(user_id, category)
             if budget:
@@ -375,6 +380,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if amount > 0:
             exp_id = save_expense(user_id, amount, category, item)
             conf_text = f"🧾 קבלה זוהתה!\n✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
+            edit_del_row = [
+                InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
+                InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
+            ]
             user_groups = get_user_groups_with_names(user_id)
             if user_groups and exp_id:
                 conf_text += "\n\n*לאן לשייך?*"
@@ -382,9 +391,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 for g in user_groups:
                     btn_rows.append([InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")])
                 btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
+                btn_rows.append(edit_del_row)
                 await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup(btn_rows), parse_mode='Markdown')
             else:
-                await update.message.reply_text(conf_text, parse_mode='Markdown')
+                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup([edit_del_row]), parse_mode='Markdown')
             budget = get_category_budget(user_id, category)
             if budget:
                 spent = get_category_spent(user_id, category)
@@ -422,6 +432,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"👋 שלום {user_text}! שמחים שהצטרפת.\n\nשלח *עזרה* להוראות שימוש.",
             parse_mode='Markdown'
         )
+        return
+
+    # עריכת הוצאה — ממתין לקלט מהמשתמש
+    if 'pending_edit' in context.user_data:
+        edit_info = context.user_data.pop('pending_edit')
+        exp_id = edit_info['exp_id']
+        field  = edit_info['field']
+        if field == 'amount':
+            try:
+                new_amount = float(user_text.replace(',', '').replace('₪', '').replace('ש"ח', '').strip())
+                db.table('expenses').update({'amount': new_amount}).eq('id', exp_id).execute()
+                res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
+                if res.data:
+                    row = res.data[0]
+                    await update.message.reply_text(
+                        f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
+                        parse_mode='Markdown',
+                        reply_markup=_edit_del_keyboard(exp_id)
+                    )
+            except ValueError:
+                await update.message.reply_text("לא הצלחתי להבין את הסכום. שלח מספר בלבד, למשל: *50*", parse_mode='Markdown')
+                context.user_data['pending_edit'] = edit_info  # שמור מחדש
+        elif field == 'item':
+            db.table('expenses').update({'item': user_text}).eq('id', exp_id).execute()
+            res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
+            if res.data:
+                row = res.data[0]
+                await update.message.reply_text(
+                    f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
+                    parse_mode='Markdown',
+                    reply_markup=_edit_del_keyboard(exp_id)
+                )
         return
 
     # אישור איפוס
@@ -532,18 +574,114 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
         group_res = db.table('groups').select('name').eq('id', group_id).execute()
         group_name = group_res.data[0]['name'] if group_res.data else str(group_id)
         exp_res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
+        edit_del_kb = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
+            InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
+        ]])
         if exp_res.data:
             row = exp_res.data[0]
             await query.edit_message_text(
                 f"✅ נרשם: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n"
                 f"📂 קטגוריה: {row['category']}\n"
                 f"👥 שויך ל*{group_name}*",
-                parse_mode='Markdown'
+                parse_mode='Markdown',
+                reply_markup=edit_del_kb
             )
         else:
-            await query.edit_message_reply_markup(reply_markup=None)
-    else:  # skip — keep as personal, just remove the buttons
-        await query.edit_message_reply_markup(reply_markup=None)
+            await query.edit_message_reply_markup(reply_markup=edit_del_kb)
+    else:  # skip — keep as personal
+        exp_id = int(parts[2])
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup([[
+            InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
+            InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
+        ]]))
+
+
+def _edit_del_keyboard(exp_id):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
+        InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
+    ]])
+
+
+async def handle_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split("_")   # edit_start_5 / edit_amount_5 / edit_item_5 / edit_cat_5 / edit_cancel_5
+
+    sub   = parts[1]
+    exp_id = int(parts[2])
+
+    if sub == "start":
+        kb = InlineKeyboardMarkup([
+            [
+                InlineKeyboardButton("💰 סכום",     callback_data=f"edit_amount_{exp_id}"),
+                InlineKeyboardButton("📂 קטגוריה",  callback_data=f"edit_cat_{exp_id}"),
+                InlineKeyboardButton("📝 פריט",     callback_data=f"edit_item_{exp_id}"),
+            ],
+            [InlineKeyboardButton("🔙 ביטול", callback_data=f"edit_cancel_{exp_id}")]
+        ])
+        await query.edit_message_reply_markup(reply_markup=kb)
+
+    elif sub == "amount":
+        context.user_data['pending_edit'] = {'exp_id': exp_id, 'field': 'amount'}
+        await query.edit_message_text(
+            (query.message.text or "") + "\n\n✏️ *שלח את הסכום החדש:*",
+            parse_mode='Markdown'
+        )
+
+    elif sub == "item":
+        context.user_data['pending_edit'] = {'exp_id': exp_id, 'field': 'item'}
+        await query.edit_message_text(
+            (query.message.text or "") + "\n\n✏️ *שלח את שם הפריט החדש:*",
+            parse_mode='Markdown'
+        )
+
+    elif sub == "cat":
+        cat_rows = [[InlineKeyboardButton(cat, callback_data=f"editcat_{exp_id}_{i}")]
+                    for i, cat in enumerate(CATEGORIES)]
+        cat_rows.append([InlineKeyboardButton("🔙 ביטול", callback_data=f"edit_cancel_{exp_id}")])
+        await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(cat_rows))
+
+    elif sub == "cancel":
+        await query.edit_message_reply_markup(reply_markup=_edit_del_keyboard(exp_id))
+
+
+async def handle_editcat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """editcat_{exp_id}_{cat_index}"""
+    query = update.callback_query
+    await query.answer()
+    parts   = query.data.split("_")   # editcat_5_2
+    exp_id  = int(parts[1])
+    new_cat = CATEGORIES[int(parts[2])]
+
+    db.table('expenses').update({'category': new_cat}).eq('id', exp_id).execute()
+    res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
+    if res.data:
+        row = res.data[0]
+        await query.edit_message_text(
+            f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
+            parse_mode='Markdown',
+            reply_markup=_edit_del_keyboard(exp_id)
+        )
+
+
+async def handle_del_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """del_{exp_id}"""
+    query = update.callback_query
+    await query.answer()
+    exp_id = int(query.data.split("_")[1])
+
+    res = db.table('expenses').select('item,amount').eq('id', exp_id).execute()
+    if res.data:
+        row = res.data[0]
+        db.table('expenses').delete().eq('id', exp_id).execute()
+        await query.edit_message_text(
+            f"🗑️ נמחק: *{row['item']}* — ₪{row['amount']:,.0f}",
+            parse_mode='Markdown'
+        )
+    else:
+        await query.edit_message_text("לא נמצאה ההוצאה.")
 
 
 async def send_monthly_summaries(bot):
@@ -579,6 +717,9 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("week", weekly_report_cmd))
     app.add_handler(CallbackQueryHandler(handle_recurring_callback, pattern="^rec_"))
     app.add_handler(CallbackQueryHandler(handle_share_callback,     pattern="^share_"))
+    app.add_handler(CallbackQueryHandler(handle_edit_callback,      pattern="^edit_"))
+    app.add_handler(CallbackQueryHandler(handle_editcat_callback,   pattern="^editcat_"))
+    app.add_handler(CallbackQueryHandler(handle_del_callback,       pattern="^del_"))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
