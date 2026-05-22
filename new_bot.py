@@ -203,18 +203,15 @@ async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"🔗 {DASHBOARD_URL}\n"
             "🪪 לקבלת המזהה שלך לכניסה: /myid"
         )
-    if DASHBOARD_URL:
-        help_text += f"\n\n━━━━━━━━━━━━━━━\n📊 *דשבורד:* {DASHBOARD_URL}\n🪪 המזהה שלך: /myid"
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 
 async def myid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    dashboard_note = f"\n\n📊 השתמש במזהה זה בעת ההרשמה לדשבורד:\n{DASHBOARD_URL}" if DASHBOARD_URL else ""
-    await update.message.reply_text(
-        f"🪪 המזהה שלך הוא: `{user_id}`{dashboard_note}",
-        parse_mode='Markdown'
-    )
+    text = f"🪪 *המזהה שלך:*\n`{user_id}`\n\n_(לחץ על המספר להעתקה)_"
+    if DASHBOARD_URL:
+        text += f"\n\n📊 השתמש במזהה זה בעת ההרשמה לדשבורד:\n{DASHBOARD_URL}"
+    await update.message.reply_text(text, parse_mode='Markdown')
 
 
 async def check_auth(update: Update, user_text: str) -> bool:
