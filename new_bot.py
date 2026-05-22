@@ -449,7 +449,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     await update.message.reply_text(
                         f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
                         parse_mode='Markdown',
-                        reply_markup=_edit_del_keyboard(exp_id)
+                        reply_markup=_full_keyboard(exp_id, user_id)
                     )
             except ValueError:
                 await update.message.reply_text("לא הצלחתי להבין את הסכום. שלח מספר בלבד, למשל: *50*", parse_mode='Markdown')
@@ -462,7 +462,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 await update.message.reply_text(
                     f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
                     parse_mode='Markdown',
-                    reply_markup=_edit_del_keyboard(exp_id)
+                    reply_markup=_full_keyboard(exp_id, user_id)
                 )
         return
 
@@ -604,6 +604,22 @@ def _edit_del_keyboard(exp_id):
     ]])
 
 
+def _full_keyboard(exp_id, user_id):
+    """בונה keyboard מלא: שיוך קבוצה (אם יש) + ערוך/מחק."""
+    edit_del_row = [
+        InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
+        InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
+    ]
+    groups = get_user_groups_with_names(user_id)
+    if groups:
+        btn_rows = [[InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")]
+                    for g in groups]
+        btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
+        btn_rows.append(edit_del_row)
+        return InlineKeyboardMarkup(btn_rows)
+    return InlineKeyboardMarkup([edit_del_row])
+
+
 async def handle_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -644,7 +660,7 @@ async def handle_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(cat_rows))
 
     elif sub == "cancel":
-        await query.edit_message_reply_markup(reply_markup=_edit_del_keyboard(exp_id))
+        await query.edit_message_reply_markup(reply_markup=_full_keyboard(exp_id, query.from_user.id))
 
 
 async def handle_editcat_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -654,6 +670,7 @@ async def handle_editcat_callback(update: Update, context: ContextTypes.DEFAULT_
     parts   = query.data.split("_")   # editcat_5_2
     exp_id  = int(parts[1])
     new_cat = CATEGORIES[int(parts[2])]
+    user_id = query.from_user.id
 
     db.table('expenses').update({'category': new_cat}).eq('id', exp_id).execute()
     res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
@@ -662,7 +679,7 @@ async def handle_editcat_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.edit_message_text(
             f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
             parse_mode='Markdown',
-            reply_markup=_edit_del_keyboard(exp_id)
+            reply_markup=_full_keyboard(exp_id, user_id)
         )
 
 
