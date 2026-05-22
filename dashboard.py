@@ -33,7 +33,7 @@ PLOT_LAYOUT = dict(
     margin=dict(l=0, r=0, t=10, b=0),
 )
 
-st.set_page_config(page_title="דשבורד הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
+st.set_page_config(page_title="ניהול הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
 
 st.markdown("""
 <style>
@@ -562,7 +562,7 @@ def login_page():
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color:#E0F0F8;text-align:center'>💰 דשבורד הוצאות</h2>",
+        st.markdown("<h2 style='color:#E0F0F8;text-align:center'>💰 ניהול הוצאות</h2>",
                     unsafe_allow_html=True)
         st.markdown("---")
 
@@ -1476,7 +1476,7 @@ def main():
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
     with col_title:
-        st.markdown(f"<h2 style='color:#E0F0F8;margin:0'>💰 דשבורד הוצאות — {month_label}</h2>",
+        st.markdown(f"<h2 style='color:#E0F0F8;margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
