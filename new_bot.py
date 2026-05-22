@@ -134,18 +134,31 @@ def analyze_text_with_ai(user_text):
         f"You MUST use ONLY one of these exact categories: {categories_str}. "
         f"Do NOT create new categories. If unsure, use 'אחר'."
     )
-    completion = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": f"Analyze: {user_text}"}
-        ],
-        response_format={"type": "json_object"}
-    )
-    data = json.loads(completion.choices[0].message.content)
-    if data.get('category') not in CATEGORIES:
-        data['category'] = 'אחר'
-    return data
+    last_error = None
+    for attempt in range(3):
+        try:
+            completion = client.chat.completions.create(
+                model="llama-3.3-70b-versatile",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": f"Analyze: {user_text}"}
+                ],
+                response_format={"type": "json_object"}
+            )
+            data = json.loads(completion.choices[0].message.content)
+            if not isinstance(data.get('amount'), (int, float)):
+                data['amount'] = 0
+            if data.get('category') not in CATEGORIES:
+                data['category'] = 'אחר'
+            if not data.get('item'):
+                data['item'] = 'לא ידוע'
+            return data
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            last_error = e
+            break  # JSON בעייתי — retry לא יעזור
+        except Exception as e:
+            last_error = e  # שגיאת API — כדאי לנסות שוב
+    raise RuntimeError(f"Groq API failed after retries: {last_error}")
 
 
 async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -261,8 +274,12 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 "לא הצלחתי לזהות סכום. נסה לנסח מחדש, למשל: _קפה 15 שקל_",
                 parse_mode='Markdown'
             )
-    except Exception:
-        await update.message.reply_text("אירעה שגיאה בעיבוד הבקשה. נסה שוב.")
+    except Exception as e:
+        err_msg = str(e)
+        if "Groq" in err_msg or "API" in err_msg or "retries" in err_msg:
+            await update.message.reply_text("⚠️ שירות ה-AI לא זמין כרגע. נסה שוב בעוד כמה שניות.")
+        else:
+            await update.message.reply_text("לא הצלחתי לעבד את הבקשה. נסה לנסח מחדש, למשל: _קפה 15 שקל_", parse_mode='Markdown')
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
