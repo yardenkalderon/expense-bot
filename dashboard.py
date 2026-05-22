@@ -35,144 +35,58 @@ PLOT_LAYOUT = dict(
 
 st.set_page_config(page_title="ניהול הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
 
+# ── CSS בסיסי (גופן + כיוון) ──────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap');
+html, body, [class*="css"] { font-family: 'Heebo', sans-serif; direction: rtl; }
+header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
+#MainMenu { visibility: hidden; } footer { visibility: hidden; }
+[data-testid="stToolbar"] { display: none; }
+</style>
+""", unsafe_allow_html=True)
 
-html, body, [class*="css"] {
-    font-family: 'Heebo', sans-serif;
-    direction: rtl;
-}
-
-/* ── רקע ראשי ── */
+_LIGHT = """
+<style>
+/* ── Warm Paper — Light ── */
 .stApp { background-color: #F5F0E8; }
 .block-container { padding-top: 4rem; background-color: #F5F0E8; }
-
-/* ── הסתרת toolbar של Streamlit ── */
-header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
-#MainMenu { visibility: hidden; }
-footer { visibility: hidden; }
-[data-testid="stToolbar"] { display: none; }
-
-/* ── כרטיסי מטריקה ── */
 .metric-card {
-    background: #FFFFFF;
-    border-radius: 14px;
-    padding: 1.2rem 1rem;
-    text-align: center;
-    border: 1px solid #D6D0C6;
-    border-top: 4px solid #B45309;
-    box-shadow: 0 1px 4px rgba(28,25,23,0.08);
-    margin-bottom: 0.5rem;
+    background: #FFFFFF; border-radius: 14px; padding: 1.2rem 1rem;
+    text-align: center; border: 1px solid #D6D0C6; border-top: 4px solid #B45309;
+    box-shadow: 0 1px 4px rgba(28,25,23,0.08); margin-bottom: 0.5rem;
 }
 .metric-card.red    { border-top-color: #DC2626; }
 .metric-card.green  { border-top-color: #15803D; }
 .metric-card.purple { border-top-color: #6B7280; }
 .metric-value { font-size: 1.9rem; font-weight: 700; color: #1C1917; }
 .metric-label { font-size: 0.82rem; color: #78716C; margin-top: 4px; }
-
-/* ── טאבים ── */
-.stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-    background: #EDE8DC;
-    border-radius: 10px;
-    padding: 4px;
-}
-.stTabs [data-baseweb="tab"] {
-    background: transparent;
-    border-radius: 8px;
-    padding: 6px 14px;
-    font-weight: 500;
-    color: #78716C;
-    border: none;
-}
-.stTabs [aria-selected="true"] {
-    background: #FFFFFF !important;
-    color: #B45309 !important;
-    border: 1px solid #D6D0C6 !important;
-    box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important;
-}
-
-/* ── כפתורים ── */
-.stButton > button {
-    background-color: #B45309 !important;
-    color: #FFFFFF !important;
-    border-radius: 8px;
-    border: none !important;
-    font-weight: 600;
-    font-family: 'Heebo', sans-serif;
-}
+.stTabs [data-baseweb="tab-list"] { gap: 4px; background: #EDE8DC; border-radius: 10px; padding: 4px; }
+.stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #78716C; border: none; }
+.stTabs [aria-selected="true"] { background: #FFFFFF !important; color: #B45309 !important; border: 1px solid #D6D0C6 !important; box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important; }
+.stButton > button { background-color: #B45309 !important; color: #FFFFFF !important; border-radius: 8px; border: none !important; font-weight: 600; font-family: 'Heebo', sans-serif; }
 .stButton > button * { color: #FFFFFF !important; }
-.stButton > button:hover { background-color: #92400E !important; color: #FFFFFF !important; }
-.stButton > button:hover * { color: #FFFFFF !important; }
-/* כפתורי form submit */
-.stFormSubmitButton > button {
-    background-color: #B45309 !important;
-    color: #FFFFFF !important;
-    border: none !important;
-}
+.stButton > button:hover { background-color: #92400E !important; }
+.stFormSubmitButton > button { background-color: #B45309 !important; color: #FFFFFF !important; border: none !important; }
 .stFormSubmitButton > button * { color: #FFFFFF !important; }
-
-/* ── Sidebar ── */
-section[data-testid="stSidebar"] {
-    background: #EDE8DC !important;
-    border-left: 1px solid #D6D0C6;
-    right: 0 !important;
-    left: auto !important;
-}
+section[data-testid="stSidebar"] { background: #EDE8DC !important; border-left: 1px solid #D6D0C6; right: 0 !important; left: auto !important; }
 section[data-testid="stSidebar"] * { color: #78716C !important; }
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 { color: #1C1917 !important; }
-
-/* ── מניעת overlap של sidebar ── */
+section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { color: #1C1917 !important; }
 .main { margin-right: 0 !important; }
-
-/* ── Inputs ── */
-.stTextInput input, .stSelectbox select, .stNumberInput input {
-    background-color: #FFFFFF !important;
-    color: #1C1917 !important;
-    border: 1px solid #D6D0C6 !important;
-    border-radius: 8px !important;
-}
-.stSelectbox > div > div {
-    background-color: #FFFFFF !important;
-    color: #1C1917 !important;
-    border: 1px solid #D6D0C6 !important;
-}
+.stTextInput input, .stSelectbox select, .stNumberInput input { background-color: #FFFFFF !important; color: #1C1917 !important; border: 1px solid #D6D0C6 !important; border-radius: 8px !important; }
+.stSelectbox > div > div { background-color: #FFFFFF !important; color: #1C1917 !important; border: 1px solid #D6D0C6 !important; }
 label, .stRadio label, .stCheckbox label { color: #78716C !important; }
-
-/* ── טבלאות ── */
-[data-testid="stDataFrame"] {
-    background: #FFFFFF;
-    border-radius: 10px;
-    border: 1px solid #D6D0C6;
-}
-[data-testid="stDataFrame"] th {
-    background: #EDE8DC !important;
-    color: #B45309 !important;
-}
+[data-testid="stDataFrame"] { background: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6; }
+[data-testid="stDataFrame"] th { background: #EDE8DC !important; color: #B45309 !important; }
 [data-testid="stDataFrame"] td { color: #1C1917 !important; }
-
-/* ── כותרות ── */
 h1, h2, h3, h4 { color: #1C1917 !important; }
 p, span, div { color: #78716C; }
-
-/* ── מפרידים ── */
 hr { border-color: #D6D0C6; }
-
-/* ── Expander ── */
 details { background: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6 !important; }
 summary { color: #1C1917 !important; }
-
-/* ── Progress ── */
 .stProgress > div > div { background-color: #B45309; }
 .stProgress > div { background-color: #D6D0C6; }
-
-/* ── Info/Success/Warning boxes ── */
 .stAlert { background-color: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6; }
-
-/* ── מובייל ── */
 @media (max-width: 768px) {
     .block-container { padding: 3.5rem 0.4rem 0.5rem !important; }
     .metric-value { font-size: 1.3rem !important; }
@@ -181,7 +95,79 @@ summary { color: #1C1917 !important; }
     h1, h2, h3 { font-size: 1.1rem !important; }
 }
 </style>
-""", unsafe_allow_html=True)
+"""
+
+_DARK = """
+<style>
+/* ── Warm Night — Dark ── */
+.stApp { background-color: #1C1008; }
+.block-container { padding-top: 4rem; background-color: #1C1008; }
+.metric-card {
+    background: #2C1A0E; border-radius: 14px; padding: 1.2rem 1rem;
+    text-align: center; border: 1px solid #3D2010; border-top: 4px solid #D97706;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.4); margin-bottom: 0.5rem;
+}
+.metric-card.red    { border-top-color: #F87171; }
+.metric-card.green  { border-top-color: #4ADE80; }
+.metric-card.purple { border-top-color: #A78BFA; }
+.metric-value { font-size: 1.9rem; font-weight: 700; color: #F5E6D3; }
+.metric-label { font-size: 0.82rem; color: #A08060; margin-top: 4px; }
+.stTabs [data-baseweb="tab-list"] { gap: 4px; background: #2C1A0E; border-radius: 10px; padding: 4px; }
+.stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #A08060; border: none; }
+.stTabs [aria-selected="true"] { background: #3D2010 !important; color: #F59E0B !important; border: 1px solid #5C3020 !important; box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important; }
+.stButton > button { background-color: #D97706 !important; color: #1C1008 !important; border-radius: 8px; border: none !important; font-weight: 600; font-family: 'Heebo', sans-serif; }
+.stButton > button * { color: #1C1008 !important; }
+.stButton > button:hover { background-color: #B45309 !important; }
+.stFormSubmitButton > button { background-color: #D97706 !important; color: #1C1008 !important; border: none !important; }
+.stFormSubmitButton > button * { color: #1C1008 !important; }
+section[data-testid="stSidebar"] { background: #2C1A0E !important; border-left: 1px solid #3D2010; right: 0 !important; left: auto !important; }
+section[data-testid="stSidebar"] * { color: #A08060 !important; }
+section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, section[data-testid="stSidebar"] h3 { color: #F5E6D3 !important; }
+.main { margin-right: 0 !important; }
+.stTextInput input, .stSelectbox select, .stNumberInput input { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; border-radius: 8px !important; }
+.stSelectbox > div > div { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; }
+label, .stRadio label, .stCheckbox label { color: #A08060 !important; }
+[data-testid="stDataFrame"] { background: #2C1A0E; border-radius: 10px; border: 1px solid #3D2010; }
+[data-testid="stDataFrame"] th { background: #1C1008 !important; color: #D97706 !important; }
+[data-testid="stDataFrame"] td { color: #F5E6D3 !important; }
+h1, h2, h3, h4 { color: #F5E6D3 !important; }
+p, span, div { color: #A08060; }
+hr { border-color: #3D2010; }
+details { background: #2C1A0E; border-radius: 10px; border: 1px solid #3D2010 !important; }
+summary { color: #F5E6D3 !important; }
+.stProgress > div > div { background-color: #D97706; }
+.stProgress > div { background-color: #3D2010; }
+.stAlert { background-color: #2C1A0E; border-radius: 10px; border: 1px solid #3D2010; }
+@media (max-width: 768px) {
+    .block-container { padding: 3.5rem 0.4rem 0.5rem !important; }
+    .metric-value { font-size: 1.3rem !important; }
+    .metric-card { padding: 0.8rem 0.5rem !important; }
+    .stTabs [data-baseweb="tab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
+    h1, h2, h3 { font-size: 1.1rem !important; }
+}
+</style>
+"""
+
+def apply_theme():
+    dark = st.session_state.get("dark_mode", False)
+    st.markdown(_DARK if dark else _LIGHT, unsafe_allow_html=True)
+
+def tc():
+    """מחזיר dict עם צבעי התמה הנוכחית לשימוש ב-inline styles."""
+    dark = st.session_state.get("dark_mode", False)
+    if dark:
+        return dict(
+            bg="#2C1A0E", bg2="#3D2010", border="#3D2010",
+            accent="#D97706", accent2="#4ADE80", danger="#F87171",
+            text="#F5E6D3", muted="#A08060"
+        )
+    return dict(
+        bg="#FFFFFF", bg2="#EDE8DC", border="#D6D0C6",
+        accent="#B45309", accent2="#15803D", danger="#DC2626",
+        text="#1C1917", muted="#78716C"
+    )
+
+
 
 
 # ── DB ───────────────────────────────────────────────────────────────────────
@@ -1071,9 +1057,9 @@ def tab_shared(groups, uid, selected_month):
     # ── member list banner ──
     member_names = [user_map.get(m, str(m)) for m in member_ids]
     st.markdown(
-        f"<div style='background:#EDE8DC;border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem;border:1px solid #D6D0C6'>"
-        f"<span style='color:#78716C'>חברי הקבוצה ({len(member_ids)}): </span>"
-        f"<span style='color:#1C1917;font-weight:600'>{' · '.join(member_names)}</span>"
+        f"<div style='background:{tc()['bg2']};border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem;border:1px solid {tc()['border']}'>"
+        f"<span style='color:{tc()['muted']}'>חברי הקבוצה ({len(member_ids)}): </span>"
+        f"<span style='color:{tc()['text']};font-weight:600'>{' · '.join(member_names)}</span>"
         f"</div>",
         unsafe_allow_html=True)
 
@@ -1106,12 +1092,12 @@ def tab_shared(groups, uid, selected_month):
         if settlements:
             for debtor, creditor, amount in settlements:
                 st.markdown(
-                    f"<div style='background:#FFFFFF;border-radius:8px;padding:0.6rem 1rem;"
-                    f"margin:4px 0;border:1px solid #D6D0C6;border-right:3px solid #DC2626'>"
-                    f"<span style='color:#1C1917;font-weight:600'>{debtor}</span>"
-                    f"<span style='color:#78716C'> חייב ל</span>"
-                    f"<span style='color:#1C1917;font-weight:600'>{creditor}</span>"
-                    f"<span style='color:#15803D;font-weight:700'> ₪{amount:,.0f}</span>"
+                    f"<div style='background:{tc()['bg']};border-radius:8px;padding:0.6rem 1rem;"
+                    f"margin:4px 0;border:1px solid {tc()['border']};border-right:3px solid {tc()['danger']}'>"
+                    f"<span style='color:{tc()['text']};font-weight:600'>{debtor}</span>"
+                    f"<span style='color:{tc()['muted']}'> חייב ל</span>"
+                    f"<span style='color:{tc()['text']};font-weight:600'>{creditor}</span>"
+                    f"<span style='color:{tc()['accent2']};font-weight:700'> ₪{amount:,.0f}</span>"
                     f"</div>",
                     unsafe_allow_html=True)
         elif len(member_ids) >= 2:
@@ -1364,10 +1350,10 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
     insight_text = st.session_state.get(insight_key, "")
     if insight_text:
         st.markdown(
-            f"""<div style='background:#FFFFFF;border-radius:12px;padding:1.4rem 1.6rem;
-            border:1px solid #D6D0C6;border-right:4px solid #B45309;direction:rtl;
-            line-height:1.8;color:#1C1917;font-family:Heebo,sans-serif;
-            white-space:pre-wrap;text-align:right;box-shadow:0 1px 4px rgba(28,25,23,0.08)'>{insight_text}</div>""",
+            f"""<div style='background:{tc()['bg']};border-radius:12px;padding:1.4rem 1.6rem;
+            border:1px solid {tc()['border']};border-right:4px solid {tc()['accent']};direction:rtl;
+            line-height:1.8;color:{tc()['text']};font-family:Heebo,sans-serif;
+            white-space:pre-wrap;text-align:right;box-shadow:0 1px 4px rgba(0,0,0,0.08)'>{insight_text}</div>""",
             unsafe_allow_html=True
         )
 
@@ -1380,16 +1366,16 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
     for msg in st.session_state[chat_key]:
         if msg["role"] == "user":
             st.markdown(
-                f"<div style='background:#EDE8DC;border-radius:10px;padding:0.7rem 1rem;"
-                f"margin:6px 0;direction:rtl;text-align:right;color:#1C1917;font-family:Heebo,sans-serif'>"
+                f"<div style='background:{tc()['bg2']};border-radius:10px;padding:0.7rem 1rem;"
+                f"margin:6px 0;direction:rtl;text-align:right;color:{tc()['text']};font-family:Heebo,sans-serif'>"
                 f"🙋 {msg['content']}</div>",
                 unsafe_allow_html=True
             )
         else:
             st.markdown(
-                f"<div style='background:#FFFFFF;border-radius:10px;padding:0.7rem 1rem;"
-                f"margin:6px 0;border:1px solid #D6D0C6;border-right:3px solid #B45309;direction:rtl;"
-                f"text-align:right;color:#1C1917;font-family:Heebo,sans-serif;white-space:pre-wrap'>"
+                f"<div style='background:{tc()['bg']};border-radius:10px;padding:0.7rem 1rem;"
+                f"margin:6px 0;border:1px solid {tc()['border']};border-right:3px solid {tc()['accent']};direction:rtl;"
+                f"text-align:right;color:{tc()['text']};font-family:Heebo,sans-serif;white-space:pre-wrap'>"
                 f"🤖 {msg['content']}</div>",
                 unsafe_allow_html=True
             )
@@ -1430,9 +1416,11 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
 
 def main():
     if not st.session_state.get("logged_in"):
+        apply_theme()
         login_page()
         return
 
+    apply_theme()
     user = st.session_state.user
     uid = user["user_id"]
     display_name = user.get("username") or user.get("dashboard_username", "")
@@ -1455,7 +1443,12 @@ def main():
             if match:
                 st.session_state["main_group_select"] = match
 
-    col_title, col_month, col_group, col_logout = st.columns([3, 1.5, 1.5, 1])
+    col_title, col_month, col_group, col_dark, col_logout = st.columns([3, 1.5, 1.5, 0.6, 1])
+    with col_dark:
+        dark = st.session_state.get("dark_mode", False)
+        if st.button("☀️" if dark else "🌙", use_container_width=True, help="החלף מצב יום/לילה"):
+            st.session_state["dark_mode"] = not dark
+            st.rerun()
     with col_month:
         selected_month = st.selectbox(
             "חודש", month_options,
