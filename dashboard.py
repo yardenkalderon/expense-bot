@@ -95,14 +95,23 @@ footer { visibility: hidden; }
 
 /* ── כפתורים ── */
 .stButton > button {
-    background-color: #B45309;
-    color: #FFFFFF;
+    background-color: #B45309 !important;
+    color: #FFFFFF !important;
     border-radius: 8px;
-    border: none;
+    border: none !important;
     font-weight: 600;
     font-family: 'Heebo', sans-serif;
 }
-.stButton > button:hover { background-color: #92400E; color: #FFFFFF; }
+.stButton > button * { color: #FFFFFF !important; }
+.stButton > button:hover { background-color: #92400E !important; color: #FFFFFF !important; }
+.stButton > button:hover * { color: #FFFFFF !important; }
+/* כפתורי form submit */
+.stFormSubmitButton > button {
+    background-color: #B45309 !important;
+    color: #FFFFFF !important;
+    border: none !important;
+}
+.stFormSubmitButton > button * { color: #FFFFFF !important; }
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
@@ -569,7 +578,7 @@ def login_page():
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color:#E0F0F8;text-align:center'>💰 ניהול הוצאות</h2>",
+        st.markdown("<h2 style='color:#1C1917;text-align:center'>💰 ניהול הוצאות</h2>",
                     unsafe_allow_html=True)
         st.markdown("---")
 
@@ -617,7 +626,7 @@ def login_page():
 
         # ── הרשמה ──────────────────────────────────────────────────────────────
         with tab_register:
-            st.markdown("<span style='color:#5A8FA8;font-size:0.85rem'>לקבלת המזהה שלך — שלח /myid לבוט</span>",
+            st.markdown("<span style='color:#78716C;font-size:0.85rem'>לקבלת המזהה שלך — שלח /myid לבוט</span>",
                         unsafe_allow_html=True)
             r_telegram_id = st.number_input("Telegram user_id", min_value=1, step=1, key="reg_uid")
             r_display     = st.text_input("שם תצוגה (עברית)", placeholder="למשל: יארדן", key="reg_name")
@@ -725,12 +734,12 @@ def tab_overview(df, df_prev, budgets):
                 prev = df_prev.groupby("category")["amount"].sum()
                 cmp = pd.DataFrame({"החודש": curr, "חודש קודם": prev}).fillna(0).reset_index()
                 fig2 = go.Figure([
-                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color="#00C9A7"),
-                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color="#1A3040",
-                           marker_line_color="#00C9A7", marker_line_width=1),
+                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color="#B45309"),
+                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color="#EDE8DC",
+                           marker_line_color="#B45309", marker_line_width=1),
                 ])
                 fig2.update_layout(barmode="group", xaxis_tickangle=-25,
-                                   legend=dict(orientation="h", font_color="#5A8FA8"),
+                                   legend=dict(orientation="h", font_color="#78716C"),
                                    height=340, **PLOT_LAYOUT)
                 st.plotly_chart(fig2, use_container_width=True, key="bar_compare")
             else:
@@ -758,7 +767,7 @@ def tab_trends(df_all):
 
     with st.container():
         fig = px.line(pts, x="period", y="amount", markers=True,
-                      color_discrete_sequence=["#00C9A7"],
+                      color_discrete_sequence=["#B45309"],
                       labels={"period": "תאריך", "amount": "סכום (₪)"})
         fig.update_traces(line_width=2.5, marker_size=7,
                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>")
@@ -779,7 +788,7 @@ def tab_trends(df_all):
 
     with st.container():
         fig2 = px.bar(monthly, x="label", y="amount", text="amount",
-                      color_discrete_sequence=["#00C9A7"],
+                      color_discrete_sequence=["#B45309"],
                       labels={"label": "חודש", "amount": "סכום (₪)"})
         fig2.update_traces(texttemplate="₪%{text:,.0f}", textposition="outside",
                            textfont_color="#E0F0F8")
@@ -790,7 +799,7 @@ def tab_trends(df_all):
 
 def tab_recurring(user_id):
     st.markdown("### 🔄 הוצאות חוזרות")
-    st.markdown("<span style='color:#5A8FA8;font-size:0.85rem'>הוצאות שחוזרות כל חודש — הבוט ישאל לאישור ביום שהגדרת</span>",
+    st.markdown("<span style='color:#78716C;font-size:0.85rem'>הוצאות שחוזרות כל חודש — הבוט ישאל לאישור ביום שהגדרת</span>",
                 unsafe_allow_html=True)
     st.markdown("---")
 
@@ -800,7 +809,7 @@ def tab_recurring(user_id):
         for row in rows:
             c1, c2, c3, c4, c5 = st.columns([3, 2, 1.5, 1, 1])
             active = row["active"]
-            style  = "color:#E0F0F8" if active else "color:#5A8FA8;text-decoration:line-through"
+            style  = "color:#1C1917" if active else "color:#78716C;text-decoration:line-through"
             with c1:
                 st.markdown(f"<span style='{style};font-weight:600'>{row['item']}</span>",
                             unsafe_allow_html=True)
@@ -808,10 +817,10 @@ def tab_recurring(user_id):
                 st.markdown(f"<span style='{style}'>{row['category']}</span>",
                             unsafe_allow_html=True)
             with c3:
-                st.markdown(f"<span style='color:#00C9A7;font-weight:700'>₪{row['amount']:,.0f}</span>",
+                st.markdown(f"<span style='color:#B45309;font-weight:700'>₪{row['amount']:,.0f}</span>",
                             unsafe_allow_html=True)
             with c4:
-                st.markdown(f"<span style='color:#5A8FA8'>יום {row['day_of_month']}</span>",
+                st.markdown(f"<span style='color:#78716C'>יום {row['day_of_month']}</span>",
                             unsafe_allow_html=True)
             with c5:
                 cols_btn = st.columns(2)
@@ -970,7 +979,7 @@ def tab_table(df_all, user_id, selected_month, display_name):
             st.success(f"נמחקו {len(to_delete)} הוצאות!")
             st.rerun()
     with col_info:
-        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
+        st.markdown(f"<span style='color:#78716C'>סה\"כ: <b style='color:#B45309'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
                     unsafe_allow_html=True)
 
 
@@ -1016,12 +1025,12 @@ def tab_budget(df, selected_month, user_id, group_id=0):
         color = "#FF6B6B" if pct > 0.9 else "#FFB347" if pct > 0.7 else "#50C878"
         col1, col2 = st.columns([3, 1])
         with col1:
-            st.markdown(f"<span style='color:#E0F0F8;font-weight:600'>{cat}</span>",
+            st.markdown(f"<span style='color:#1C1917;font-weight:600'>{cat}</span>",
                         unsafe_allow_html=True)
             st.progress(pct)
         with col2:
             st.markdown(f"<span style='color:{color};font-weight:600'>₪{spent:,.0f}</span>"
-                        f"<span style='color:#5A8FA8'> / ₪{budget:,.0f}</span>",
+                        f"<span style='color:#78716C'> / ₪{budget:,.0f}</span>",
                         unsafe_allow_html=True)
 
 
@@ -1062,9 +1071,9 @@ def tab_shared(groups, uid, selected_month):
     # ── member list banner ──
     member_names = [user_map.get(m, str(m)) for m in member_ids]
     st.markdown(
-        f"<div style='background:#1A3040;border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem'>"
-        f"<span style='color:#5A8FA8'>חברי הקבוצה ({len(member_ids)}): </span>"
-        f"<span style='color:#E0F0F8;font-weight:600'>{' · '.join(member_names)}</span>"
+        f"<div style='background:#EDE8DC;border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem;border:1px solid #D6D0C6'>"
+        f"<span style='color:#78716C'>חברי הקבוצה ({len(member_ids)}): </span>"
+        f"<span style='color:#1C1917;font-weight:600'>{' · '.join(member_names)}</span>"
         f"</div>",
         unsafe_allow_html=True)
 
@@ -1075,7 +1084,7 @@ def tab_shared(groups, uid, selected_month):
     with col1:
         with st.container():
             fig = px.pie(totals, values="amount", names="user_name",
-                         color_discrete_sequence=["#00C9A7", "#3DD6F5", "#56E39F", "#FFB347", "#FF6B6B"])
+                         color_discrete_sequence=["#B45309", "#15803D", "#D97706", "#DC2626", "#6B7280"])
             fig.update_layout(height=300, **PLOT_LAYOUT)
             st.plotly_chart(fig, use_container_width=True, key="pie_shared")
 
@@ -1083,13 +1092,13 @@ def tab_shared(groups, uid, selected_month):
         st.markdown("#### מי שילם כמה")
         for _, row in totals.iterrows():
             st.markdown(
-                f"<span style='color:#E0F0F8;font-weight:600'>{row['user_name']}:</span> "
-                f"<span style='color:#00C9A7'>₪{row['amount']:,.0f}</span> "
-                f"<span style='color:#5A8FA8'>({row['אחוז']}%)</span>",
+                f"<span style='color:#1C1917;font-weight:600'>{row['user_name']}:</span> "
+                f"<span style='color:#B45309;font-weight:700'>₪{row['amount']:,.0f}</span> "
+                f"<span style='color:#78716C'>({row['אחוז']}%)</span>",
                 unsafe_allow_html=True)
         st.markdown(
-            f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{grand:,.0f}</b></span>"
-            f"<span style='color:#5A8FA8'> | לאחד: <b style='color:#00C9A7'>₪{per_person:,.0f}</b></span>",
+            f"<span style='color:#78716C'>סה\"כ: <b style='color:#B45309'>₪{grand:,.0f}</b></span>"
+            f"<span style='color:#78716C'> | לאחד: <b style='color:#15803D'>₪{per_person:,.0f}</b></span>",
             unsafe_allow_html=True)
 
         st.markdown("---")
@@ -1097,12 +1106,12 @@ def tab_shared(groups, uid, selected_month):
         if settlements:
             for debtor, creditor, amount in settlements:
                 st.markdown(
-                    f"<div style='background:#162634;border-radius:8px;padding:0.6rem 1rem;"
-                    f"margin:4px 0;border-right:3px solid #FF6B6B'>"
-                    f"<span style='color:#E0F0F8;font-weight:600'>{debtor}</span>"
-                    f"<span style='color:#5A8FA8'> חייב ל</span>"
-                    f"<span style='color:#E0F0F8;font-weight:600'>{creditor}</span>"
-                    f"<span style='color:#00C9A7;font-weight:700'> ₪{amount:,.0f}</span>"
+                    f"<div style='background:#FFFFFF;border-radius:8px;padding:0.6rem 1rem;"
+                    f"margin:4px 0;border:1px solid #D6D0C6;border-right:3px solid #DC2626'>"
+                    f"<span style='color:#1C1917;font-weight:600'>{debtor}</span>"
+                    f"<span style='color:#78716C'> חייב ל</span>"
+                    f"<span style='color:#1C1917;font-weight:600'>{creditor}</span>"
+                    f"<span style='color:#15803D;font-weight:700'> ₪{amount:,.0f}</span>"
                     f"</div>",
                     unsafe_allow_html=True)
         elif len(member_ids) >= 2:
@@ -1355,9 +1364,10 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
     insight_text = st.session_state.get(insight_key, "")
     if insight_text:
         st.markdown(
-            f"""<div style='background:#162634;border-radius:12px;padding:1.4rem 1.6rem;
-            border-right:4px solid #00C9A7;direction:rtl;line-height:1.8;color:#E0F0F8;
-            font-family:Heebo,sans-serif;white-space:pre-wrap'>{insight_text}</div>""",
+            f"""<div style='background:#FFFFFF;border-radius:12px;padding:1.4rem 1.6rem;
+            border:1px solid #D6D0C6;border-right:4px solid #B45309;direction:rtl;
+            line-height:1.8;color:#1C1917;font-family:Heebo,sans-serif;
+            white-space:pre-wrap;text-align:right;box-shadow:0 1px 4px rgba(28,25,23,0.08)'>{insight_text}</div>""",
             unsafe_allow_html=True
         )
 
@@ -1370,16 +1380,16 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
     for msg in st.session_state[chat_key]:
         if msg["role"] == "user":
             st.markdown(
-                f"<div style='background:#1A3040;border-radius:10px;padding:0.7rem 1rem;"
-                f"margin:6px 0;direction:rtl;color:#E0F0F8;font-family:Heebo,sans-serif'>"
+                f"<div style='background:#EDE8DC;border-radius:10px;padding:0.7rem 1rem;"
+                f"margin:6px 0;direction:rtl;text-align:right;color:#1C1917;font-family:Heebo,sans-serif'>"
                 f"🙋 {msg['content']}</div>",
                 unsafe_allow_html=True
             )
         else:
             st.markdown(
-                f"<div style='background:#162634;border-radius:10px;padding:0.7rem 1rem;"
-                f"margin:6px 0;border-right:3px solid #00C9A7;direction:rtl;"
-                f"color:#E0F0F8;font-family:Heebo,sans-serif;white-space:pre-wrap'>"
+                f"<div style='background:#FFFFFF;border-radius:10px;padding:0.7rem 1rem;"
+                f"margin:6px 0;border:1px solid #D6D0C6;border-right:3px solid #B45309;direction:rtl;"
+                f"text-align:right;color:#1C1917;font-family:Heebo,sans-serif;white-space:pre-wrap'>"
                 f"🤖 {msg['content']}</div>",
                 unsafe_allow_html=True
             )
@@ -1483,7 +1493,7 @@ def main():
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
     with col_title:
-        st.markdown(f"<h2 style='color:#E0F0F8;margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
+        st.markdown(f"<h2 style='color:#1C1917;margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
