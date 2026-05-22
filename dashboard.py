@@ -127,22 +127,9 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 .stTextInput input, .stSelectbox select, .stNumberInput input { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; border-radius: 8px !important; }
 .stSelectbox > div > div { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; }
 label, .stRadio label, .stCheckbox label { color: #A08060 !important; }
-[data-testid="stDataFrame"] { background: #2C1A0E; border-radius: 10px; border: 1px solid #3D2010; }
-[data-testid="stDataFrame"] > div { background: #2C1A0E !important; }
-[data-testid="stDataFrame"] > div > div { background: #2C1A0E !important; }
+[data-testid="stDataFrame"] { border-radius: 10px; border: 1px solid #3D2010; }
 [data-testid="stDataFrame"] th { background: #1C1008 !important; color: #D97706 !important; }
 [data-testid="stDataFrame"] td { color: #F5E6D3 !important; }
-/* canvas של הטבלה */
-.glideDataEditor, .dvn-scroller, .gdg-style { background: #2C1A0E !important; }
-/* toolbar הצף (ייצוא וכו') */
-[data-testid="stElementToolbar"] {
-    background: #2C1A0E !important;
-    border: 1px solid #3D2010 !important;
-    border-radius: 8px !important;
-}
-[data-testid="stElementToolbar"] button { color: #F5E6D3 !important; background: transparent !important; }
-[data-testid="stElementToolbar"] button:hover { background: #3D2010 !important; }
-[data-testid="stElementToolbarButton"] { color: #F5E6D3 !important; }
 h1, h2, h3, h4 { color: #F5E6D3 !important; }
 p, span, div { color: #A08060; }
 hr { border-color: #3D2010; }
