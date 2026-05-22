@@ -263,6 +263,29 @@ def save_budget_to_db(user_id, month, budgets_dict, group_id=0):
     fetch_budget.clear()
 
 
+def fetch_recurring(user_id):
+    db = get_db()
+    return db.table("recurring_expenses").select("*").eq("user_id", user_id).order("day_of_month").execute().data or []
+
+
+def save_recurring(user_id, item, category, amount, day):
+    db = get_db()
+    db.table("recurring_expenses").insert({
+        "user_id": user_id, "item": item, "category": category,
+        "amount": float(amount), "day_of_month": int(day), "active": True
+    }).execute()
+
+
+def delete_recurring(rec_id):
+    db = get_db()
+    db.table("recurring_expenses").delete().eq("id", rec_id).execute()
+
+
+def toggle_recurring(rec_id, active):
+    db = get_db()
+    db.table("recurring_expenses").update({"active": active}).eq("id", rec_id).execute()
+
+
 def update_expense(expense_id, category, item, amount, date_str):
     db = get_db()
     db.table("expenses").update({
@@ -708,6 +731,68 @@ def tab_trends(df_all):
         fig2.update_layout(xaxis_title="חודש", yaxis_title="סכום (₪)",
                            yaxis_tickformat=",.0f", height=300, **PLOT_LAYOUT)
         st.plotly_chart(fig2, use_container_width=True, key="bar_monthly")
+
+
+def tab_recurring(user_id):
+    st.markdown("### 🔄 הוצאות חוזרות")
+    st.markdown("<span style='color:#5A8FA8;font-size:0.85rem'>הוצאות שחוזרות כל חודש — הבוט ישאל לאישור ביום שהגדרת</span>",
+                unsafe_allow_html=True)
+    st.markdown("---")
+
+    rows = fetch_recurring(user_id)
+
+    if rows:
+        for row in rows:
+            c1, c2, c3, c4, c5 = st.columns([3, 2, 1.5, 1, 1])
+            active = row["active"]
+            style  = "color:#E0F0F8" if active else "color:#5A8FA8;text-decoration:line-through"
+            with c1:
+                st.markdown(f"<span style='{style};font-weight:600'>{row['item']}</span>",
+                            unsafe_allow_html=True)
+            with c2:
+                st.markdown(f"<span style='{style}'>{row['category']}</span>",
+                            unsafe_allow_html=True)
+            with c3:
+                st.markdown(f"<span style='color:#00C9A7;font-weight:700'>₪{row['amount']:,.0f}</span>",
+                            unsafe_allow_html=True)
+            with c4:
+                st.markdown(f"<span style='color:#5A8FA8'>יום {row['day_of_month']}</span>",
+                            unsafe_allow_html=True)
+            with c5:
+                cols_btn = st.columns(2)
+                with cols_btn[0]:
+                    toggle_label = "⏸" if active else "▶️"
+                    if st.button(toggle_label, key=f"tog_{row['id']}",
+                                 help="השהה" if active else "הפעל"):
+                        toggle_recurring(row["id"], not active)
+                        st.rerun()
+                with cols_btn[1]:
+                    if st.button("🗑️", key=f"del_rec_{row['id']}", help="מחק"):
+                        delete_recurring(row["id"])
+                        st.rerun()
+        st.markdown("---")
+    else:
+        st.info("אין הוצאות חוזרות. הוסף את הראשונה 👇")
+
+    # ── טופס הוספה ──
+    with st.expander("➕ הוסף הוצאה חוזרת"):
+        with st.form("add_recurring"):
+            c1, c2, c3, c4 = st.columns(4)
+            with c1:
+                r_item = st.text_input("פריט", placeholder="שכר דירה")
+            with c2:
+                r_cat = st.selectbox("קטגוריה", CATEGORIES, key="rec_cat")
+            with c3:
+                r_amount = st.number_input("סכום (₪)", min_value=1.0, step=10.0)
+            with c4:
+                r_day = st.number_input("יום בחודש", min_value=1, max_value=28, value=1, step=1)
+            if st.form_submit_button("➕ הוסף"):
+                if r_item and r_amount > 0:
+                    save_recurring(user_id, r_item, r_cat, r_amount, r_day)
+                    st.success(f"נוסף: {r_item} — ₪{r_amount:,.0f} בכל יום {r_day} לחודש")
+                    st.rerun()
+                else:
+                    st.error("מלא פריט וסכום")
 
 
 def tab_table(df_all, user_id, selected_month, display_name):
@@ -1270,16 +1355,17 @@ def main():
         st.markdown(f"<h2 style='color:#E0F0F8;margin:0'>💰 דשבורד הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
-    t1, t2, t3, t4, t5, t6, t7 = st.tabs(
-        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🎯 תקציב", "👥 משותף", "🤖 Insights", "⚙️ הגדרות"])
+    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
+        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🔄 חוזרות", "🎯 תקציב", "👥 משותף", "🤖 Insights", "⚙️ הגדרות"])
 
     with t1: tab_overview(df, df_prev, budgets)
     with t2: tab_trends(df_all)
     with t3: tab_table(df_all, uid, selected_month, display_name)
-    with t4: tab_budget(df, selected_month, uid, active_group_id)
-    with t5: tab_shared(selected_month)
-    with t6: tab_insights(df, df_prev, budgets, selected_month, display_name)
-    with t7: tab_settings()
+    with t4: tab_recurring(uid)
+    with t5: tab_budget(df, selected_month, uid, active_group_id)
+    with t6: tab_shared(selected_month)
+    with t7: tab_insights(df, df_prev, budgets, selected_month, display_name)
+    with t8: tab_settings()
 
 
 if __name__ == "__main__":

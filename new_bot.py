@@ -7,8 +7,8 @@ from collections import defaultdict
 from dotenv import load_dotenv
 from groq import Groq
 from supabase import create_client
-from telegram import Update
-from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 load_dotenv()
@@ -447,6 +447,47 @@ async def weekly_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_week_report(user_id), parse_mode='Markdown')
 
 
+async def send_recurring_reminders(bot):
+    today_day = datetime.now().day
+    rows = db.table("recurring_expenses").select("*").eq("day_of_month", today_day).eq("active", True).execute().data or []
+    for row in rows:
+        keyboard = InlineKeyboardMarkup([[
+            InlineKeyboardButton("✅ כן, רשום", callback_data=f"rec_yes_{row['id']}"),
+            InlineKeyboardButton("❌ דלג החודש",  callback_data=f"rec_skip_{row['id']}")
+        ]])
+        try:
+            await bot.send_message(
+                chat_id=row["user_id"],
+                text=f"🔄 *{row['item']}* — ₪{row['amount']:,.0f}\nלרשום אוטומטית לחודש זה?",
+                reply_markup=keyboard,
+                parse_mode='Markdown'
+            )
+        except Exception:
+            pass
+
+
+async def handle_recurring_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    parts  = query.data.split("_")   # rec_yes_5  or  rec_skip_5
+    action = parts[1]
+    rec_id = int(parts[2])
+
+    if action == "yes":
+        result = db.table("recurring_expenses").select("*").eq("id", rec_id).execute()
+        if result.data:
+            row = result.data[0]
+            save_expense(row["user_id"], row["amount"], row["category"], row["item"])
+            await query.edit_message_text(
+                f"✅ נרשם: *{row['item']}* — ₪{row['amount']:,.0f} ({row['category']})",
+                parse_mode='Markdown'
+            )
+    else:
+        result = db.table("recurring_expenses").select("item").eq("id", rec_id).execute()
+        item = result.data[0]["item"] if result.data else ""
+        await query.edit_message_text(f"⏭️ *{item}* — דולג החודש", parse_mode='Markdown')
+
+
 async def send_monthly_summaries(bot):
     result = db.table('authorized_users').select('user_id').execute()
     for row in (result.data or []):
@@ -461,6 +502,10 @@ async def send_monthly_summaries(bot):
 async def post_init(application):
     scheduler = AsyncIOScheduler()
     scheduler.add_job(
+        lambda: application.create_task(send_recurring_reminders(application.bot)),
+        'cron', hour=9, minute=0
+    )
+    scheduler.add_job(
         lambda: application.create_task(send_monthly_summaries(application.bot)),
         'cron', day='last', hour=20, minute=0
     )
@@ -474,6 +519,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("help", start_help))
     app.add_handler(CommandHandler("myid", myid_cmd))
     app.add_handler(CommandHandler("week", weekly_report_cmd))
+    app.add_handler(CallbackQueryHandler(handle_recurring_callback, pattern="^rec_"))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
