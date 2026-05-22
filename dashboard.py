@@ -1490,7 +1490,7 @@ def main():
     with col_title:
         c = tc()
         title_color = c["text"]
-        st.markdown(f"<h2 style='color:{title_color};margin:0;text-align:center'>💰 ניהול הוצאות — {month_label}</h2>",
+        st.markdown(f"<h2 style='color:{title_color};margin:0;text-align:right'>💰 ניהול הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
