@@ -15,21 +15,21 @@ GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 CAT_COLORS = {
-    "אוכל ושתייה": "#00C9A7",
-    "קניות וסופר": "#3DD6F5",
-    "תחבורה ודלק": "#56E39F",
-    "פנאי ובילוי": "#FFB347",
-    "חשבונות ובית": "#5A8FA8",
-    "בריאות": "#FF6B6B",
-    "אחר": "#2A5060",
+    "אוכל ושתייה": "#B45309",
+    "קניות וסופר": "#15803D",
+    "תחבורה ודלק": "#D97706",
+    "פנאי ובילוי": "#DC2626",
+    "חשבונות ובית": "#6B7280",
+    "בריאות": "#0369A1",
+    "אחר": "#78716C",
 }
 
 PLOT_LAYOUT = dict(
     paper_bgcolor="rgba(0,0,0,0)",
     plot_bgcolor="rgba(0,0,0,0)",
-    font_color="#5A8FA8",
-    xaxis=dict(gridcolor="#1A3040", linecolor="#1A3040"),
-    yaxis=dict(gridcolor="#1A3040", linecolor="#1A3040"),
+    font_color="#78716C",
+    xaxis=dict(gridcolor="#D6D0C6", linecolor="#D6D0C6"),
+    yaxis=dict(gridcolor="#D6D0C6", linecolor="#D6D0C6"),
     margin=dict(l=0, r=0, t=10, b=0),
 )
 
@@ -45,8 +45,8 @@ html, body, [class*="css"] {
 }
 
 /* ── רקע ראשי ── */
-.stApp { background-color: #0F1923; }
-.block-container { padding-top: 4rem; background-color: #0F1923; }
+.stApp { background-color: #F5F0E8; }
+.block-container { padding-top: 4rem; background-color: #F5F0E8; }
 
 /* ── הסתרת toolbar של Streamlit ── */
 header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
@@ -56,105 +56,112 @@ footer { visibility: hidden; }
 
 /* ── כרטיסי מטריקה ── */
 .metric-card {
-    background: #162634;
+    background: #FFFFFF;
     border-radius: 14px;
     padding: 1.2rem 1rem;
     text-align: center;
-    border-top: 4px solid #00C9A7;
+    border: 1px solid #D6D0C6;
+    border-top: 4px solid #B45309;
+    box-shadow: 0 1px 4px rgba(28,25,23,0.08);
     margin-bottom: 0.5rem;
 }
-.metric-card.red    { border-top-color: #FF6B6B; }
-.metric-card.green  { border-top-color: #56E39F; }
-.metric-card.purple { border-top-color: #3DD6F5; }
-.metric-value { font-size: 1.9rem; font-weight: 700; color: #E0F0F8; }
-.metric-label { font-size: 0.82rem; color: #5A8FA8; margin-top: 4px; }
+.metric-card.red    { border-top-color: #DC2626; }
+.metric-card.green  { border-top-color: #15803D; }
+.metric-card.purple { border-top-color: #6B7280; }
+.metric-value { font-size: 1.9rem; font-weight: 700; color: #1C1917; }
+.metric-label { font-size: 0.82rem; color: #78716C; margin-top: 4px; }
 
 /* ── טאבים ── */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 6px;
-    background: #0F1923;
+    gap: 4px;
+    background: #EDE8DC;
+    border-radius: 10px;
+    padding: 4px;
 }
 .stTabs [data-baseweb="tab"] {
-    background: #1A3040;
+    background: transparent;
     border-radius: 8px;
     padding: 6px 14px;
     font-weight: 500;
-    color: #5A8FA8;
+    color: #78716C;
     border: none;
 }
 .stTabs [aria-selected="true"] {
-    background: #00C9A7 !important;
-    color: #0F1923 !important;
+    background: #FFFFFF !important;
+    color: #B45309 !important;
+    border: 1px solid #D6D0C6 !important;
+    box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important;
 }
 
 /* ── כפתורים ── */
 .stButton > button {
-    background-color: #00C9A7;
-    color: #0F1923;
+    background-color: #B45309;
+    color: #FFFFFF;
     border-radius: 8px;
     border: none;
     font-weight: 600;
     font-family: 'Heebo', sans-serif;
 }
-.stButton > button:hover { background-color: #00a98c; color: #0F1923; }
+.stButton > button:hover { background-color: #92400E; color: #FFFFFF; }
 
 /* ── Sidebar ── */
 section[data-testid="stSidebar"] {
-    background: #0F1923 !important;
-    border-left: 1px solid #1A3040;
+    background: #EDE8DC !important;
+    border-left: 1px solid #D6D0C6;
     right: 0 !important;
     left: auto !important;
 }
-section[data-testid="stSidebar"] * { color: #5A8FA8 !important; }
+section[data-testid="stSidebar"] * { color: #78716C !important; }
 section[data-testid="stSidebar"] h1,
 section[data-testid="stSidebar"] h2,
-section[data-testid="stSidebar"] h3 { color: #E0F0F8 !important; }
+section[data-testid="stSidebar"] h3 { color: #1C1917 !important; }
 
 /* ── מניעת overlap של sidebar ── */
 .main { margin-right: 0 !important; }
 
 /* ── Inputs ── */
 .stTextInput input, .stSelectbox select, .stNumberInput input {
-    background-color: #162634 !important;
-    color: #E0F0F8 !important;
-    border: 1px solid #1A3040 !important;
+    background-color: #FFFFFF !important;
+    color: #1C1917 !important;
+    border: 1px solid #D6D0C6 !important;
     border-radius: 8px !important;
 }
 .stSelectbox > div > div {
-    background-color: #162634 !important;
-    color: #E0F0F8 !important;
-    border: 1px solid #1A3040 !important;
+    background-color: #FFFFFF !important;
+    color: #1C1917 !important;
+    border: 1px solid #D6D0C6 !important;
 }
-label, .stRadio label, .stCheckbox label { color: #5A8FA8 !important; }
+label, .stRadio label, .stCheckbox label { color: #78716C !important; }
 
 /* ── טבלאות ── */
 [data-testid="stDataFrame"] {
-    background: #162634;
+    background: #FFFFFF;
     border-radius: 10px;
+    border: 1px solid #D6D0C6;
 }
 [data-testid="stDataFrame"] th {
-    background: #0F1923 !important;
-    color: #00C9A7 !important;
+    background: #EDE8DC !important;
+    color: #B45309 !important;
 }
-[data-testid="stDataFrame"] td { color: #E0F0F8 !important; }
+[data-testid="stDataFrame"] td { color: #1C1917 !important; }
 
 /* ── כותרות ── */
-h1, h2, h3, h4 { color: #E0F0F8 !important; }
-p, span, div { color: #5A8FA8; }
+h1, h2, h3, h4 { color: #1C1917 !important; }
+p, span, div { color: #78716C; }
 
 /* ── מפרידים ── */
-hr { border-color: #1A3040; }
+hr { border-color: #D6D0C6; }
 
 /* ── Expander ── */
-details { background: #162634; border-radius: 10px; border: 1px solid #1A3040 !important; }
-summary { color: #E0F0F8 !important; }
+details { background: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6 !important; }
+summary { color: #1C1917 !important; }
 
 /* ── Progress ── */
-.stProgress > div > div { background-color: #00C9A7; }
-.stProgress > div { background-color: #1A3040; }
+.stProgress > div > div { background-color: #B45309; }
+.stProgress > div { background-color: #D6D0C6; }
 
 /* ── Info/Success/Warning boxes ── */
-.stAlert { background-color: #162634; border-radius: 10px; }
+.stAlert { background-color: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6; }
 
 /* ── מובייל ── */
 @media (max-width: 768px) {
