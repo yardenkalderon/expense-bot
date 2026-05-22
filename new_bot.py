@@ -13,11 +13,12 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 load_dotenv()
 
-TELEGRAM_TOKEN = os.environ['TELEGRAM_TOKEN']
-GROQ_API_KEY = os.environ['GROQ_API_KEY']
+TELEGRAM_TOKEN  = os.environ['TELEGRAM_TOKEN']
+GROQ_API_KEY    = os.environ['GROQ_API_KEY']
 ACCESS_PASSWORD = os.environ['ACCESS_PASSWORD']
-SUPABASE_URL = os.environ['SUPABASE_URL']
-SUPABASE_KEY = os.environ['SUPABASE_KEY']
+SUPABASE_URL    = os.environ['SUPABASE_URL']
+SUPABASE_KEY    = os.environ['SUPABASE_KEY']
+DASHBOARD_URL   = os.environ.get('DASHBOARD_URL', '')
 
 client = Groq(api_key=GROQ_API_KEY)
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -174,6 +175,15 @@ async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 
+async def myid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    user_id = update.message.from_user.id
+    dashboard_note = f"\n\n📊 השתמש במזהה זה בעת ההרשמה לדשבורד:\n{DASHBOARD_URL}" if DASHBOARD_URL else ""
+    await update.message.reply_text(
+        f"🪪 המזהה שלך הוא: `{user_id}`{dashboard_note}",
+        parse_mode='Markdown'
+    )
+
+
 async def check_auth(update: Update, user_text: str) -> bool:
     user_id = update.message.from_user.id
     if is_authorized(user_id):
@@ -186,7 +196,11 @@ async def check_auth(update: Update, user_text: str) -> bool:
         authorize_user(user_id)
         password_attempts.pop(user_id, None)
         pending_username.add(user_id)
-        await update.message.reply_text("✅ הסיסמה נכונה! ברוך הבא.\n\nאיך קוראים לך? (שלח את שמך)")
+        dashboard_line = f"\n\n📊 לדשבורד ההוצאות: {DASHBOARD_URL}\nהירשם עם המזהה שלך: `{user_id}` (או שלח /myid)" if DASHBOARD_URL else ""
+        await update.message.reply_text(
+            f"✅ הסיסמה נכונה! ברוך הבא.{dashboard_line}\n\nאיך קוראים לך? (שלח את שמך)",
+            parse_mode='Markdown'
+        )
     else:
         password_attempts[user_id] = attempts + 1
         remaining = MAX_ATTEMPTS - password_attempts[user_id]
@@ -441,6 +455,7 @@ if __name__ == '__main__':
 
     app.add_handler(CommandHandler("start", start_help))
     app.add_handler(CommandHandler("help", start_help))
+    app.add_handler(CommandHandler("myid", myid_cmd))
     app.add_handler(CommandHandler("week", weekly_report_cmd))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))

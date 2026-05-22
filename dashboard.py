@@ -488,27 +488,96 @@ def generate_pdf(df, selected_month, display_name):
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 
 def login_page():
-    col1, col2, col3 = st.columns([1, 1.2, 1])
+    col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
         st.markdown("<br><br>", unsafe_allow_html=True)
         st.markdown("<h2 style='color:#E0F0F8;text-align:center'>💰 דשבורד הוצאות</h2>",
                     unsafe_allow_html=True)
         st.markdown("---")
-        username = st.text_input("שם משתמש", placeholder="הכנס שם משתמש")
-        password = st.text_input("סיסמה", type="password", placeholder="הכנס סיסמה")
-        if st.button("כניסה", use_container_width=True):
-            db = get_db()
-            res = db.table("authorized_users").select("*").eq("dashboard_username", username).execute()
-            if res.data:
-                user = res.data[0]
-                if user.get("dashboard_password", "") == hash_pw(password):
-                    st.session_state.logged_in = True
-                    st.session_state.user = user
-                    st.rerun()
+
+        tab_login, tab_register = st.tabs(["🔑 כניסה", "📝 הרשמה"])
+
+        # ── כניסה ──────────────────────────────────────────────────────────────
+        with tab_login:
+            username = st.text_input("שם משתמש", placeholder="שם משתמש", key="login_user")
+            password = st.text_input("סיסמה", type="password", placeholder="סיסמה", key="login_pass")
+            if st.button("כניסה", use_container_width=True, key="login_btn"):
+                db = get_db()
+                res = db.table("authorized_users").select("*").eq("dashboard_username", username).execute()
+                if res.data:
+                    user = res.data[0]
+                    if user.get("dashboard_password", "") == hash_pw(password):
+                        st.session_state.logged_in = True
+                        st.session_state.user = user
+                        st.rerun()
+                    else:
+                        st.error("סיסמה שגויה")
                 else:
-                    st.error("סיסמה שגויה")
-            else:
-                st.error("משתמש לא נמצא")
+                    st.error("משתמש לא נמצא")
+
+            # ── שחזור סיסמה ──
+            st.markdown("<br>", unsafe_allow_html=True)
+            with st.expander("🔓 שכחתי סיסמה"):
+                r_uid = st.number_input("Telegram user_id שלך", min_value=1, step=1, key="reset_uid")
+                r_pass1 = st.text_input("סיסמה חדשה", type="password", key="reset_p1")
+                r_pass2 = st.text_input("אימות סיסמה חדשה", type="password", key="reset_p2")
+                if st.button("אפס סיסמה", use_container_width=True, key="reset_btn"):
+                    if not r_pass1 or not r_pass2:
+                        st.error("מלא את כל השדות")
+                    elif r_pass1 != r_pass2:
+                        st.error("הסיסמאות אינן תואמות")
+                    else:
+                        db = get_db()
+                        res = db.table("authorized_users").select("user_id").eq("user_id", int(r_uid)).execute()
+                        if not res.data:
+                            st.error("המזהה לא נמצא במערכת — בדוק שהתחברת לבוט קודם")
+                        else:
+                            db.table("authorized_users").update({
+                                "dashboard_password": hash_pw(r_pass1)
+                            }).eq("user_id", int(r_uid)).execute()
+                            st.success("✅ הסיסמה עודכנה! כנס עם הסיסמה החדשה")
+
+        # ── הרשמה ──────────────────────────────────────────────────────────────
+        with tab_register:
+            st.markdown("<span style='color:#5A8FA8;font-size:0.85rem'>לקבלת המזהה שלך — שלח /myid לבוט</span>",
+                        unsafe_allow_html=True)
+            r_telegram_id = st.number_input("Telegram user_id", min_value=1, step=1, key="reg_uid")
+            r_display     = st.text_input("שם תצוגה (עברית)", placeholder="למשל: יארדן", key="reg_name")
+            r_username    = st.text_input("שם משתמש לדשבורד", placeholder="לועזית בלבד", key="reg_uname")
+            r_pw1         = st.text_input("סיסמה", type="password", key="reg_pw1")
+            r_pw2         = st.text_input("אימות סיסמה", type="password", key="reg_pw2")
+
+            if st.button("הירשם", use_container_width=True, key="reg_btn"):
+                errors = []
+                if not r_display:    errors.append("הכנס שם תצוגה")
+                if not r_username:   errors.append("הכנס שם משתמש")
+                if not r_pw1:        errors.append("הכנס סיסמה")
+                if r_pw1 != r_pw2:   errors.append("הסיסמאות אינן תואמות")
+                if errors:
+                    for e in errors:
+                        st.error(e)
+                else:
+                    db = get_db()
+                    # בדוק אם user_id קיים
+                    check_uid = db.table("authorized_users").select("user_id").eq("user_id", int(r_telegram_id)).execute()
+                    if check_uid.data and check_uid.data[0].get("dashboard_username"):
+                        st.error("המזהה הזה כבר רשום במערכת")
+                    else:
+                        # בדוק אם שם משתמש תפוס
+                        check_uname = db.table("authorized_users").select("user_id").eq("dashboard_username", r_username).execute()
+                        if check_uname.data:
+                            st.error("שם המשתמש כבר תפוס — בחר שם אחר")
+                        else:
+                            db.table("authorized_users").upsert({
+                                "user_id": int(r_telegram_id),
+                                "username": r_display,
+                                "dashboard_username": r_username,
+                                "dashboard_password": hash_pw(r_pw1),
+                                "is_admin": False,
+                            }).execute()
+                            fetch_users.clear()
+                            st.success("✅ נרשמת בהצלחה! עבור לטאב כניסה והתחבר")
+                            st.balloons()
 
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
