@@ -1445,17 +1445,17 @@ def main():
     col_title, col_dark, col_logout = st.columns([4, 0.7, 1])
     with col_dark:
         dark = st.session_state.get("dark_mode", False)
-        if st.button("☀️" if dark else "🌙", use_container_width=True, help="החלף מצב יום/לילה"):
+        if st.button("☀️" if dark else "🌙", help="החלף מצב יום/לילה"):
             st.session_state["dark_mode"] = not dark
             st.rerun()
     with col_logout:
-        if st.button("התנתק", use_container_width=True):
+        if st.button("התנתק"):
             for k in ["logged_in", "user", "group_initialized", "main_group_select"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
-    # שורה 2: סינון חודש + קבוצה
-    col_month, col_group = st.columns([1, 1])
+    # שורה 2: סינון חודש + קבוצה (spacer משמאל לצמצום רוחב במחשב)
+    col_month, col_group, _ = st.columns([1.5, 1.5, 3])
     with col_month:
         selected_month = st.selectbox(
             "חודש", month_options,
@@ -1490,7 +1490,7 @@ def main():
     with col_title:
         c = tc()
         title_color = c["text"]
-        st.markdown(f"<h2 style='color:{title_color};margin:0;text-align:center'>💰 ניהול הוצאות — {month_label}</h2>",
+        st.markdown(f"<h2 style='color:{title_color};margin:0;text-align:right'>💰 ניהול הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
