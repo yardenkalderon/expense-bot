@@ -194,6 +194,17 @@ async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "אוכל ושתייה | קניות וסופר | תחבורה ודלק\n"
         "פנאי ובילוי | חשבונות ובית | בריאות | אחר"
     )
+    if DASHBOARD_URL:
+        help_text += (
+            "\n\n━━━━━━━━━━━━━━━\n"
+            "💻 *דשבורד ניהול*\n"
+            "צפה בגרפים, ניתוח AI, הוצאות חוזרות,\n"
+            "תקציב חודשי והוצאות משותפות עם הקבוצה שלך.\n\n"
+            f"🔗 {DASHBOARD_URL}\n"
+            "🪪 לקבלת המזהה שלך לכניסה: /myid"
+        )
+    if DASHBOARD_URL:
+        help_text += f"\n\n━━━━━━━━━━━━━━━\n📊 *דשבורד:* {DASHBOARD_URL}\n🪪 המזהה שלך: /myid"
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 
