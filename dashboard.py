@@ -1441,12 +1441,21 @@ def main():
             if match:
                 st.session_state["main_group_select"] = match
 
-    col_title, col_month, col_group, col_dark, col_logout = st.columns([3, 1.5, 1.5, 0.6, 1])
+    # שורה 1: כותרת + מצב לילה + התנתק
+    col_title, col_dark, col_logout = st.columns([4, 0.7, 1])
     with col_dark:
         dark = st.session_state.get("dark_mode", False)
         if st.button("☀️" if dark else "🌙", use_container_width=True, help="החלף מצב יום/לילה"):
             st.session_state["dark_mode"] = not dark
             st.rerun()
+    with col_logout:
+        if st.button("התנתק", use_container_width=True):
+            for k in ["logged_in", "user", "group_initialized", "main_group_select"]:
+                st.session_state.pop(k, None)
+            st.rerun()
+
+    # שורה 2: סינון חודש + קבוצה
+    col_month, col_group = st.columns([1, 1])
     with col_month:
         selected_month = st.selectbox(
             "חודש", month_options,
@@ -1457,11 +1466,6 @@ def main():
         selected_group_name = st.selectbox("קבוצה", group_options,
                                            key="main_group_select",
                                            label_visibility="collapsed")
-    with col_logout:
-        if st.button("התנתק", use_container_width=True):
-            for k in ["logged_in", "user", "group_initialized", "main_group_select"]:
-                st.session_state.pop(k, None)
-            st.rerun()
 
     # Determine which user_ids and group_id to use
     if selected_group_name == "אני בלבד":
@@ -1484,7 +1488,8 @@ def main():
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
     with col_title:
-        st.markdown(f"<h2 style='color:#1C1917;margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
+        c = tc()
+        st.markdown(f"<h2 style='color:{c[\"text\"]};margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
