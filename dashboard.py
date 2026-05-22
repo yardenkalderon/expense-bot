@@ -80,7 +80,7 @@ label, .stRadio label, .stCheckbox label { color: #78716C !important; }
 [data-testid="stDataFrame"] th { background: #EDE8DC !important; color: #B45309 !important; }
 [data-testid="stDataFrame"] td { color: #1C1917 !important; }
 h1, h2, h3, h4 { color: #1C1917 !important; text-align: right !important; }
-p, span, div { color: #78716C; }
+p, span, div { color: #78716C; text-align: right; }
 hr { border-color: #D6D0C6; }
 details { background: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6 !important; }
 summary { color: #1C1917 !important; }
@@ -130,7 +130,7 @@ label, .stRadio label, .stCheckbox label { color: #A08060 !important; }
 [data-testid="stDataFrame"] { -webkit-filter: invert(1) hue-rotate(180deg) !important; filter: invert(1) hue-rotate(180deg) !important; border-radius: 10px; border: 1px solid #3D2010; }
 [data-testid="stDataFrame"] > div { -webkit-filter: invert(1) hue-rotate(180deg) !important; filter: invert(1) hue-rotate(180deg) !important; }
 h1, h2, h3, h4 { color: #F5E6D3 !important; text-align: right !important; }
-p, span, div { color: #A08060; }
+p, span, div { color: #A08060; text-align: right; }
 hr { border-color: #3D2010; }
 details { background: #2C1A0E; border-radius: 10px; border: 1px solid #3D2010 !important; }
 summary { color: #F5E6D3 !important; }
