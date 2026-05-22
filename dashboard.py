@@ -250,6 +250,12 @@ def delete_group(group_id):
     db.table("groups").delete().eq("id", group_id).execute()
 
 
+def save_default_group(user_id, group_id_or_none):
+    db = get_db()
+    db.table("authorized_users").update({"default_group_id": group_id_or_none}).eq("user_id", user_id).execute()
+    fetch_users.clear()
+
+
 def save_budget_to_db(user_id, month, budgets_dict, group_id=0):
     db = get_db()
     for cat, amount in budgets_dict.items():
@@ -1107,6 +1113,30 @@ def tab_shared(groups, uid, selected_month):
 
 
 def tab_settings():
+    # ── פרופיל — גלוי לכולם ──────────────────────────────────────────────────
+    st.markdown("### 👤 פרופיל")
+    uid          = st.session_state.user["user_id"]
+    user_groups  = fetch_groups(uid)
+    def_options  = {"אני בלבד": None}
+    for g in user_groups:
+        def_options[g["name"]] = g["id"]
+
+    current_gid  = st.session_state.user.get("default_group_id")
+    current_name = next((n for n, gid in def_options.items() if gid == current_gid), "אני בלבד")
+    current_idx  = list(def_options.keys()).index(current_name)
+
+    new_default = st.selectbox("תצוגת ברירת מחדל בכניסה לדשבורד",
+                               list(def_options.keys()), index=current_idx,
+                               key="pref_default_group")
+    if st.button("💾 שמור העדפה", key="save_pref"):
+        new_gid = def_options[new_default]
+        save_default_group(uid, new_gid)
+        st.session_state.user["default_group_id"] = new_gid
+        st.success(f"✅ ברירת מחדל עודכנה: {new_default}")
+
+    st.markdown("---")
+
+    # ── ניהול — אדמין בלבד ───────────────────────────────────────────────────
     st.markdown("### ניהול משתמשים")
 
     if not st.session_state.user.get("is_admin"):
@@ -1399,6 +1429,15 @@ def main():
     groups = fetch_groups(uid)
     group_options = ["אני בלבד"] + [g["name"] for g in groups]
 
+    # ── ברירת מחדל לקבוצה — מוגדרת פעם אחת אחרי כניסה ──
+    if "group_initialized" not in st.session_state:
+        st.session_state["group_initialized"] = True
+        default_gid = user.get("default_group_id")
+        if default_gid:
+            match = next((g["name"] for g in groups if g["id"] == default_gid), None)
+            if match:
+                st.session_state["main_group_select"] = match
+
     col_title, col_month, col_group, col_logout = st.columns([3, 1.5, 1.5, 1])
     with col_month:
         selected_month = st.selectbox(
@@ -1407,10 +1446,12 @@ def main():
             label_visibility="collapsed"
         )
     with col_group:
-        selected_group_name = st.selectbox("קבוצה", group_options, label_visibility="collapsed")
+        selected_group_name = st.selectbox("קבוצה", group_options,
+                                           key="main_group_select",
+                                           label_visibility="collapsed")
     with col_logout:
         if st.button("התנתק", use_container_width=True):
-            for k in ["logged_in", "user"]:
+            for k in ["logged_in", "user", "group_initialized", "main_group_select"]:
                 st.session_state.pop(k, None)
             st.rerun()
 
