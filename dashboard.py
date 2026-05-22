@@ -1489,7 +1489,8 @@ def main():
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
     with col_title:
         c = tc()
-        st.markdown(f"<h2 style='color:{c[\"text\"]};margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
+        title_color = c["text"]
+        st.markdown(f"<h2 style='color:{title_color};margin:0'>💰 ניהול הוצאות — {month_label}</h2>",
                     unsafe_allow_html=True)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
