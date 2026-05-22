@@ -9,9 +9,9 @@ import os
 import io
 import tempfile
 
-SUPABASE_URL = os.environ.get('SUPABASE_URL', 'https://zqbimrpywehyfodghgan.supabase.co')
-SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '***REMOVED***')
-GROQ_API_KEY  = os.environ.get('GROQ_API_KEY', '')
+SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
+SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
+GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 CAT_COLORS = {
