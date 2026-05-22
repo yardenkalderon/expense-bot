@@ -263,6 +263,48 @@ def save_budget_to_db(user_id, month, budgets_dict, group_id=0):
     fetch_budget.clear()
 
 
+@st.cache_data(ttl=30)
+def fetch_shared_expenses(group_id, month=None):
+    db = get_db()
+    query = db.table("expenses").select("*").eq("group_id", group_id)
+    if month:
+        query = query.like("date", f"{month}%")
+    result = query.order("date", desc=True).execute()
+    if not result.data:
+        return pd.DataFrame()
+    df = pd.DataFrame(result.data)
+    df["date"] = pd.to_datetime(df["date"])
+    df["amount"] = df["amount"].astype(float)
+    return df
+
+
+def calculate_settlement(df_shared, member_ids, user_map):
+    """מחשב מי חייב למי — מחזיר רשימת (חייב, זכאי, סכום)."""
+    if df_shared.empty or len(member_ids) < 2:
+        return []
+    total      = df_shared["amount"].sum()
+    per_person = total / len(member_ids)
+    paid       = df_shared.groupby("user_id")["amount"].sum()
+    balances   = {mid: float(paid.get(mid, 0)) - per_person for mid in member_ids}
+    creditors  = sorted([(uid, bal)  for uid, bal in balances.items() if bal  >  0.5], key=lambda x: -x[1])
+    debtors    = sorted([(uid, -bal) for uid, bal in balances.items() if bal  < -0.5], key=lambda x: -x[1])
+    c_amt = {uid: amt for uid, amt in creditors}
+    d_amt = {uid: amt for uid, amt in debtors}
+    c_list, d_list = [uid for uid, _ in creditors], [uid for uid, _ in debtors]
+    result = []
+    ci, di = 0, 0
+    while ci < len(c_list) and di < len(d_list):
+        c, d   = c_list[ci], d_list[di]
+        transfer = min(c_amt[c], d_amt[d])
+        if transfer > 0.5:
+            result.append((user_map.get(d, str(d)), user_map.get(c, str(c)), transfer))
+        c_amt[c] -= transfer
+        d_amt[d] -= transfer
+        if c_amt[c] < 0.5: ci += 1
+        if d_amt[d] < 0.5: di += 1
+    return result
+
+
 def fetch_recurring(user_id):
     db = get_db()
     return db.table("recurring_expenses").select("*").eq("user_id", user_id).order("day_of_month").execute().data or []
@@ -970,28 +1012,37 @@ def tab_budget(df, selected_month, user_id, group_id=0):
                         unsafe_allow_html=True)
 
 
-def tab_shared(selected_month):
+def tab_shared(groups, uid, selected_month):
     st.markdown("### הוצאות משותפות")
 
-    users = fetch_users()
-    if not users:
-        st.info("אין משתמשים")
+    if not groups:
+        st.info("אין לך קבוצות. צור קבוצה בטאב ⚙️ הגדרות")
         return
 
-    user_map = {
-        u["user_id"]: u.get("username") or u.get("dashboard_username", str(u["user_id"]))
-        for u in users
-    }
+    group_options = {g["id"]: g["name"] for g in groups}
+    selected_gid  = st.selectbox(
+        "בחר קבוצה",
+        list(group_options.keys()),
+        format_func=lambda x: group_options[x],
+        key="shared_group_select"
+    )
 
-    df = fetch_expenses(all_users=True, month=selected_month)
+    member_ids = fetch_group_members(selected_gid)
+    users      = fetch_users()
+    user_map   = {u["user_id"]: u.get("username") or u.get("dashboard_username", str(u["user_id"])) for u in users}
+
+    df = fetch_shared_expenses(selected_gid, selected_month)
+
     if df.empty:
-        st.info("אין נתונים לחודש זה")
+        st.info("אין הוצאות משותפות לחודש זה.\nכשתרשום הוצאה בבוט, בחר 'שייך לקבוצה'.")
         return
 
     df["user_name"] = df["user_id"].map(user_map).fillna(df["user_id"].astype(str))
     totals = df.groupby("user_name")["amount"].sum().reset_index()
-    grand = totals["amount"].sum()
+    grand  = totals["amount"].sum()
     totals["אחוז"] = (totals["amount"] / grand * 100).round(1)
+
+    settlements = calculate_settlement(df, member_ids, user_map)
 
     col1, col2 = st.columns(2)
     with col1:
@@ -1002,15 +1053,31 @@ def tab_shared(selected_month):
             st.plotly_chart(fig, use_container_width=True, key="pie_shared")
 
     with col2:
-        st.markdown("#### סיכום")
+        st.markdown("#### מי שילם כמה")
         for _, row in totals.iterrows():
             st.markdown(
                 f"<span style='color:#E0F0F8;font-weight:600'>{row['user_name']}:</span> "
                 f"<span style='color:#00C9A7'>₪{row['amount']:,.0f}</span> "
                 f"<span style='color:#5A8FA8'>({row['אחוז']}%)</span>",
                 unsafe_allow_html=True)
-        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ משותף: <b style='color:#00C9A7'>₪{grand:,.0f}</b></span>",
+        st.markdown(f"<span style='color:#5A8FA8'>סה\"כ: <b style='color:#00C9A7'>₪{grand:,.0f}</b></span>",
                     unsafe_allow_html=True)
+
+        st.markdown("---")
+        st.markdown("#### 💸 חישוב פשרה")
+        if settlements:
+            for debtor, creditor, amount in settlements:
+                st.markdown(
+                    f"<div style='background:#162634;border-radius:8px;padding:0.6rem 1rem;"
+                    f"margin:4px 0;border-right:3px solid #FF6B6B'>"
+                    f"<span style='color:#E0F0F8;font-weight:600'>{debtor}</span>"
+                    f"<span style='color:#5A8FA8'> חייב ל</span>"
+                    f"<span style='color:#E0F0F8;font-weight:600'>{creditor}</span>"
+                    f"<span style='color:#00C9A7;font-weight:700'> ₪{amount:,.0f}</span>"
+                    f"</div>",
+                    unsafe_allow_html=True)
+        else:
+            st.success("✅ הכל מחולק שווה!")
 
     st.markdown("---")
     st.markdown("### פירוט לפי משתמש")
@@ -1363,7 +1430,7 @@ def main():
     with t3: tab_table(df_all, uid, selected_month, display_name)
     with t4: tab_recurring(uid)
     with t5: tab_budget(df, selected_month, uid, active_group_id)
-    with t6: tab_shared(selected_month)
+    with t6: tab_shared(groups, uid, selected_month)
     with t7: tab_insights(df, df_prev, budgets, selected_month, display_name)
     with t8: tab_settings()
 

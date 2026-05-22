@@ -96,6 +96,14 @@ def get_user_groups(user_id):
     return [r['group_id'] for r in (result.data or [])]
 
 
+def get_user_groups_with_names(user_id):
+    group_ids = get_user_groups(user_id)
+    if not group_ids:
+        return []
+    result = db.table('groups').select('id,name').in_('id', group_ids).execute()
+    return result.data or []
+
+
 def get_group_other_members(user_id, group_id):
     result = db.table('group_members').select('user_id').eq('group_id', group_id).neq('user_id', user_id).execute()
     return [r['user_id'] for r in (result.data or [])]
@@ -118,13 +126,14 @@ def get_last_expenses(user_id):
 
 
 def save_expense(user_id, amount, category, item):
-    db.table('expenses').insert({
+    result = db.table('expenses').insert({
         'user_id': user_id,
         'amount': amount,
         'category': category,
         'item': item,
         'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     }).execute()
+    return result.data[0]['id'] if result.data else None
 
 
 def analyze_text_with_ai(user_text):
@@ -231,11 +240,18 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         category = data.get('category', 'אחר')
         item = data.get('item', 'לא ידוע')
         if amount > 0:
-            save_expense(user_id, amount, category, item)
-            await update.message.reply_text(
-                f"✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}",
-                parse_mode='Markdown'
-            )
+            exp_id = save_expense(user_id, amount, category, item)
+            conf_text = f"✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
+            user_groups = get_user_groups_with_names(user_id)
+            if user_groups and exp_id:
+                conf_text += "\n\n*לאן לשייך?*"
+                btn_rows = []
+                for g in user_groups:
+                    btn_rows.append([InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")])
+                btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
+                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup(btn_rows), parse_mode='Markdown')
+            else:
+                await update.message.reply_text(conf_text, parse_mode='Markdown')
             # התראת תקציב
             budget = get_category_budget(user_id, category)
             if budget:
@@ -349,11 +365,18 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             category = 'אחר'
         item = data.get('item', 'לא ידוע')
         if amount > 0:
-            save_expense(user_id, amount, category, item)
-            await update.message.reply_text(
-                f"🧾 קבלה זוהתה!\n✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}",
-                parse_mode='Markdown'
-            )
+            exp_id = save_expense(user_id, amount, category, item)
+            conf_text = f"🧾 קבלה זוהתה!\n✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
+            user_groups = get_user_groups_with_names(user_id)
+            if user_groups and exp_id:
+                conf_text += "\n\n*לאן לשייך?*"
+                btn_rows = []
+                for g in user_groups:
+                    btn_rows.append([InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")])
+                btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
+                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup(btn_rows), parse_mode='Markdown')
+            else:
+                await update.message.reply_text(conf_text, parse_mode='Markdown')
             budget = get_category_budget(user_id, category)
             if budget:
                 spent = get_category_spent(user_id, category)
@@ -488,6 +511,33 @@ async def handle_recurring_callback(update: Update, context: ContextTypes.DEFAUL
         await query.edit_message_text(f"⏭️ *{item}* — דולג החודש", parse_mode='Markdown')
 
 
+async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    parts = query.data.split("_")   # share_grp_{exp_id}_{group_id}  or  share_skip_{exp_id}
+    action = parts[1]
+
+    if action == "grp":
+        exp_id   = int(parts[2])
+        group_id = int(parts[3])
+        db.table('expenses').update({'group_id': group_id}).eq('id', exp_id).execute()
+        group_res = db.table('groups').select('name').eq('id', group_id).execute()
+        group_name = group_res.data[0]['name'] if group_res.data else str(group_id)
+        exp_res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
+        if exp_res.data:
+            row = exp_res.data[0]
+            await query.edit_message_text(
+                f"✅ נרשם: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n"
+                f"📂 קטגוריה: {row['category']}\n"
+                f"👥 שויך ל*{group_name}*",
+                parse_mode='Markdown'
+            )
+        else:
+            await query.edit_message_reply_markup(reply_markup=None)
+    else:  # skip — keep as personal, just remove the buttons
+        await query.edit_message_reply_markup(reply_markup=None)
+
+
 async def send_monthly_summaries(bot):
     result = db.table('authorized_users').select('user_id').execute()
     for row in (result.data or []):
@@ -520,6 +570,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("myid", myid_cmd))
     app.add_handler(CommandHandler("week", weekly_report_cmd))
     app.add_handler(CallbackQueryHandler(handle_recurring_callback, pattern="^rec_"))
+    app.add_handler(CallbackQueryHandler(handle_share_callback,     pattern="^share_"))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
