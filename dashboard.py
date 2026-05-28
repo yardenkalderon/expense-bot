@@ -335,6 +335,14 @@ def toggle_recurring(rec_id, active):
     db.table("recurring_expenses").update({"active": active}).eq("id", rec_id).execute()
 
 
+def update_recurring(rec_id, item, category, amount, day):
+    db = get_db()
+    db.table("recurring_expenses").update({
+        "item": item, "category": category,
+        "amount": float(amount), "day_of_month": int(day)
+    }).eq("id", rec_id).execute()
+
+
 def update_expense(expense_id, category, item, amount, date_str):
     db = get_db()
     db.table("expenses").update({
@@ -792,7 +800,34 @@ def tab_recurring(user_id):
 
     if rows:
         for row in rows:
-            c1, c2, c3, c4, c5 = st.columns([3, 2, 1.5, 1, 1])
+            # ── מצב עריכה לשורה זו ──
+            if st.session_state.get("editing_rec") == row["id"]:
+                with st.form(f"edit_rec_{row['id']}"):
+                    ec1, ec2, ec3, ec4 = st.columns(4)
+                    with ec1:
+                        e_item = st.text_input("פריט", value=row["item"])
+                    with ec2:
+                        cat_idx = CATEGORIES.index(row["category"]) if row["category"] in CATEGORIES else 0
+                        e_cat = st.selectbox("קטגוריה", CATEGORIES, index=cat_idx)
+                    with ec3:
+                        e_amount = st.number_input("סכום (₪)", min_value=1.0, step=10.0,
+                                                   value=float(row["amount"]))
+                    with ec4:
+                        e_day = st.number_input("יום בחודש", min_value=1, max_value=28,
+                                                value=int(row["day_of_month"]), step=1)
+                    sc1, sc2 = st.columns(2)
+                    with sc1:
+                        if st.form_submit_button("💾 שמור"):
+                            update_recurring(row["id"], e_item, e_cat, e_amount, e_day)
+                            st.session_state.pop("editing_rec", None)
+                            st.rerun()
+                    with sc2:
+                        if st.form_submit_button("❌ ביטול"):
+                            st.session_state.pop("editing_rec", None)
+                            st.rerun()
+                continue
+
+            c1, c2, c3, c4, c5 = st.columns([2.5, 1.5, 1.2, 1, 1.8])
             active = row["active"]
             style  = "color:#1C1917" if active else "color:#78716C;text-decoration:line-through"
             with c1:
@@ -808,7 +843,7 @@ def tab_recurring(user_id):
                 st.markdown(f"<span style='color:#78716C'>יום {row['day_of_month']}</span>",
                             unsafe_allow_html=True)
             with c5:
-                cols_btn = st.columns(2)
+                cols_btn = st.columns(3)
                 with cols_btn[0]:
                     toggle_label = "⏸" if active else "▶️"
                     if st.button(toggle_label, key=f"tog_{row['id']}",
@@ -816,6 +851,10 @@ def tab_recurring(user_id):
                         toggle_recurring(row["id"], not active)
                         st.rerun()
                 with cols_btn[1]:
+                    if st.button("✏️", key=f"edit_rec_{row['id']}", help="ערוך"):
+                        st.session_state["editing_rec"] = row["id"]
+                        st.rerun()
+                with cols_btn[2]:
                     if st.button("🗑️", key=f"del_rec_{row['id']}", help="מחק"):
                         delete_recurring(row["id"])
                         st.rerun()
@@ -825,7 +864,7 @@ def tab_recurring(user_id):
 
     # ── טופס הוספה ──
     with st.expander("➕ הוסף הוצאה חוזרת"):
-        with st.form("add_recurring"):
+        with st.form("add_recurring", clear_on_submit=True):
             c1, c2, c3, c4 = st.columns(4)
             with c1:
                 r_item = st.text_input("פריט", placeholder="שכר דירה")
