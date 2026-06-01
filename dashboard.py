@@ -1033,6 +1033,22 @@ def tab_budget(df, selected_month, user_id, group_id=0):
         budgets = new_budgets
         st.success("התקציב נשמר!")
 
+    # אין תקציב לחודש זה? הצע להעתיק מהחודש הקודם
+    if not any(v > 0 for v in budgets.values()):
+        prev_month = prev_month_str(selected_month)
+        prev_budgets = fetch_budget(user_id, prev_month, group_id)
+        if any(v > 0 for v in prev_budgets.values()):
+            prev_label = datetime.strptime(prev_month, "%Y-%m").strftime("%m/%Y")
+            if st.button(f"📋 העתק תקציב מחודש {prev_label}",
+                         key=f"copy_budget_{selected_month}_{group_id}"):
+                save_budget_to_db(user_id, selected_month, prev_budgets, group_id)
+                st.session_state[bkey] = dict(prev_budgets)
+                # נקה את ערכי ה-widgets כדי שיתאתחלו מהתקציב המועתק
+                for cat in CATEGORIES:
+                    st.session_state.pop(f"b_{cat}_{selected_month}_{group_id}", None)
+                st.success(f"התקציב מחודש {prev_label} הועתק!")
+                st.rerun()
+
     st.markdown("---")
     st.markdown("#### התקדמות vs תקציב")
 
