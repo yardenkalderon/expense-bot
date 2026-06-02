@@ -3,6 +3,7 @@ import os
 import base64
 import tempfile
 from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 from collections import defaultdict
 from dotenv import load_dotenv
 from groq import Groq
@@ -22,6 +23,8 @@ DASHBOARD_URL   = os.environ.get('DASHBOARD_URL', '')
 
 client = Groq(api_key=GROQ_API_KEY)
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+TZ = ZoneInfo("Asia/Jerusalem")
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 
@@ -521,9 +524,18 @@ async def weekly_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 async def send_recurring_reminders(bot):
-    today_day = datetime.now().day
-    rows = db.table("recurring_expenses").select("*").eq("day_of_month", today_day).eq("active", True).execute().data or []
+    now = datetime.now(TZ)
+    today_day = now.day
+    current_month = now.strftime("%Y-%m")
+    # כולל "השלמה": כל הוצאה שיומה כבר הגיע החודש ועוד לא נשלחה עליה תזכורת
+    rows = (db.table("recurring_expenses")
+              .select("*")
+              .eq("active", True)
+              .lte("day_of_month", today_day)
+              .execute().data or [])
     for row in rows:
+        if row.get("last_reminded") == current_month:
+            continue  # כבר נשלחה תזכורת החודש — דלג כדי למנוע כפילות
         keyboard = InlineKeyboardMarkup([[
             InlineKeyboardButton("✅ כן, רשום", callback_data=f"rec_yes_{row['id']}"),
             InlineKeyboardButton("❌ דלג החודש",  callback_data=f"rec_skip_{row['id']}")
@@ -535,6 +547,9 @@ async def send_recurring_reminders(bot):
                 reply_markup=keyboard,
                 parse_mode='Markdown'
             )
+            db.table("recurring_expenses").update(
+                {"last_reminded": current_month}
+            ).eq("id", row["id"]).execute()
         except Exception:
             pass
 
@@ -713,7 +728,7 @@ async def send_monthly_summaries(bot):
 
 
 async def post_init(application):
-    scheduler = AsyncIOScheduler()
+    scheduler = AsyncIOScheduler(timezone=TZ)
     scheduler.add_job(
         lambda: application.create_task(send_recurring_reminders(application.bot)),
         'cron', hour=9, minute=0
@@ -723,6 +738,8 @@ async def post_init(application):
         'cron', day='last', hour=20, minute=0
     )
     scheduler.start()
+    # השלמה בהפעלה: אם הבוט עשה restart אחרי 09:00, נשלח עכשיו תזכורות שטרם נשלחו החודש
+    application.create_task(send_recurring_reminders(application.bot))
 
 
 if __name__ == '__main__':
