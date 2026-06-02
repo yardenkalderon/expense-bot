@@ -798,67 +798,70 @@ def tab_recurring(user_id):
 
     rows = fetch_recurring(user_id)
 
+    # שמירה על 3 כפתורי הפעולה בשורה אחת גם במובייל (מונע קיפול אנכי)
+    st.markdown("""
+    <style>
+    [class*="st-key-recbtns_"] [data-testid="stHorizontalBlock"]{
+        flex-wrap:nowrap !important; gap:6px !important;
+    }
+    [class*="st-key-recbtns_"] [data-testid="stColumn"]{ min-width:0 !important; }
+    </style>
+    """, unsafe_allow_html=True)
+
     if rows:
         for row in rows:
             # ── מצב עריכה לשורה זו ──
             if st.session_state.get("editing_rec") == row["id"]:
                 with st.form(f"edit_rec_{row['id']}"):
-                    ec1, ec2, ec3, ec4 = st.columns(4)
-                    with ec1:
-                        e_item = st.text_input("פריט", value=row["item"])
-                    with ec2:
-                        cat_idx = CATEGORIES.index(row["category"]) if row["category"] in CATEGORIES else 0
-                        e_cat = st.selectbox("קטגוריה", CATEGORIES, index=cat_idx)
-                    with ec3:
-                        e_amount = st.number_input("סכום (₪)", min_value=1.0, step=10.0,
-                                                   value=float(row["amount"]))
-                    with ec4:
-                        e_day = st.number_input("יום בחודש", min_value=1, max_value=28,
-                                                value=int(row["day_of_month"]), step=1)
+                    e_item = st.text_input("פריט", value=row["item"])
+                    cat_idx = CATEGORIES.index(row["category"]) if row["category"] in CATEGORIES else 0
+                    e_cat = st.selectbox("קטגוריה", CATEGORIES, index=cat_idx)
+                    e_amount = st.number_input("סכום (₪)", min_value=1.0, step=10.0,
+                                               value=float(row["amount"]))
+                    e_day = st.number_input("יום בחודש", min_value=1, max_value=28,
+                                            value=int(row["day_of_month"]), step=1)
                     sc1, sc2 = st.columns(2)
                     with sc1:
-                        if st.form_submit_button("💾 שמור"):
+                        if st.form_submit_button("💾 שמור", use_container_width=True):
                             update_recurring(row["id"], e_item, e_cat, e_amount, e_day)
                             st.session_state.pop("editing_rec", None)
                             st.rerun()
                     with sc2:
-                        if st.form_submit_button("❌ ביטול"):
+                        if st.form_submit_button("❌ ביטול", use_container_width=True):
                             st.session_state.pop("editing_rec", None)
                             st.rerun()
+                st.markdown("<hr style='margin:0.6rem 0;border:none;border-top:1px solid #E7E0D6'>",
+                            unsafe_allow_html=True)
                 continue
 
-            c1, c2, c3, c4, c5 = st.columns([2.5, 1.5, 1.2, 1, 1.8])
             active = row["active"]
-            style  = "color:#1C1917" if active else "color:#78716C;text-decoration:line-through"
-            with c1:
-                st.markdown(f"<span style='{style};font-weight:600'>{row['item']}</span>",
-                            unsafe_allow_html=True)
-            with c2:
-                st.markdown(f"<span style='{style}'>{row['category']}</span>",
-                            unsafe_allow_html=True)
-            with c3:
-                st.markdown(f"<span style='color:#B45309;font-weight:700'>₪{row['amount']:,.0f}</span>",
-                            unsafe_allow_html=True)
-            with c4:
-                st.markdown(f"<span style='color:#78716C'>יום {row['day_of_month']}</span>",
-                            unsafe_allow_html=True)
-            with c5:
-                cols_btn = st.columns(3)
-                with cols_btn[0]:
+            name_style = "color:#1C1917" if active else "color:#78716C;text-decoration:line-through"
+            st.markdown(
+                f"<div style='text-align:right;line-height:1.55'>"
+                f"<span style='{name_style};font-weight:700;font-size:1.05rem'>{row['item']}</span>"
+                f"<span style='color:#B45309;font-weight:700'> · ₪{row['amount']:,.0f}</span><br>"
+                f"<span style='color:#78716C;font-size:0.85rem'>{row['category']} · יום {row['day_of_month']} בחודש</span>"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+            with st.container(key=f"recbtns_{row['id']}"):
+                b1, b2, b3 = st.columns(3)
+                with b1:
                     toggle_label = "⏸" if active else "▶️"
-                    if st.button(toggle_label, key=f"tog_{row['id']}",
+                    if st.button(toggle_label, key=f"tog_{row['id']}", use_container_width=True,
                                  help="השהה" if active else "הפעל"):
                         toggle_recurring(row["id"], not active)
                         st.rerun()
-                with cols_btn[1]:
-                    if st.button("✏️", key=f"edit_rec_{row['id']}", help="ערוך"):
+                with b2:
+                    if st.button("✏️", key=f"edit_rec_{row['id']}", use_container_width=True, help="ערוך"):
                         st.session_state["editing_rec"] = row["id"]
                         st.rerun()
-                with cols_btn[2]:
-                    if st.button("🗑️", key=f"del_rec_{row['id']}", help="מחק"):
+                with b3:
+                    if st.button("🗑️", key=f"del_rec_{row['id']}", use_container_width=True, help="מחק"):
                         delete_recurring(row["id"])
                         st.rerun()
-        st.markdown("---")
+            st.markdown("<hr style='margin:0.6rem 0;border:none;border-top:1px solid #E7E0D6'>",
+                        unsafe_allow_html=True)
     else:
         st.info("אין הוצאות חוזרות. הוסף את הראשונה 👇")
 
