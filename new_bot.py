@@ -2,7 +2,7 @@ import json
 import os
 import base64
 import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -10,7 +10,6 @@ from groq import Groq
 from supabase import create_client
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
-from apscheduler.schedulers.asyncio import AsyncIOScheduler
 
 load_dotenv()
 
@@ -727,19 +726,25 @@ async def send_monthly_summaries(bot):
             pass
 
 
+async def _recurring_job(context: ContextTypes.DEFAULT_TYPE):
+    await send_recurring_reminders(context.bot)
+
+
+async def _monthly_job(context: ContextTypes.DEFAULT_TYPE):
+    # רץ כל יום ב-20:00 — שולח רק אם היום הוא היום האחרון בחודש
+    now = datetime.now(TZ)
+    if (now + timedelta(days=1)).month != now.month:
+        await send_monthly_summaries(context.bot)
+
+
 async def post_init(application):
-    scheduler = AsyncIOScheduler(timezone=TZ)
-    scheduler.add_job(
-        lambda: application.create_task(send_recurring_reminders(application.bot)),
-        'cron', hour=9, minute=0
-    )
-    scheduler.add_job(
-        lambda: application.create_task(send_monthly_summaries(application.bot)),
-        'cron', day='last', hour=20, minute=0
-    )
-    scheduler.start()
-    # השלמה בהפעלה: אם הבוט עשה restart אחרי 09:00, נשלח עכשיו תזכורות שטרם נשלחו החודש
-    application.create_task(send_recurring_reminders(application.bot))
+    jq = application.job_queue
+    # תזכורת יומית ב-09:00 שעון ישראל
+    jq.run_daily(_recurring_job, time=dtime(hour=9, minute=0, tzinfo=TZ))
+    # רשת ביטחון + השלמה בהפעלה: בדיקה כל שעה (חסינה לכפילויות דרך last_reminded)
+    jq.run_repeating(_recurring_job, interval=3600, first=10)
+    # סיכום חודשי ב-20:00 ביום האחרון של החודש
+    jq.run_daily(_monthly_job, time=dtime(hour=20, minute=0, tzinfo=TZ))
 
 
 if __name__ == '__main__':
