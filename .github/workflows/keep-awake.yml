@@ -1,0 +1,55 @@
+name: Keep Streamlit Awake
+
+# שומר את הדשבורד ער: כל ~10 דקות נכנס אליו עם דפדפן נסתר
+# (כולל לחיצה על כפתור ה-wake אם האתר ישן), כדי לאפס את שעון השינה.
+
+on:
+  schedule:
+    - cron: '*/10 * * * *'   # כל 10 דקות
+  workflow_dispatch:          # מאפשר גם הרצה ידנית מ-GitHub
+
+jobs:
+  wake:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Playwright
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+
+      - name: Visit and wake the dashboard
+        env:
+          APP_URL: https://yardenbot.streamlit.app
+        run: |
+          python - <<'EOF'
+          import os
+          from playwright.sync_api import sync_playwright
+
+          url = os.environ["APP_URL"]
+          with sync_playwright() as p:
+              browser = p.chromium.launch()
+              page = browser.new_page()
+              page.goto(url, wait_until="networkidle", timeout=90000)
+
+              # אם האתר ישן — יופיע כפתור "get this app back up"
+              try:
+                  btn = page.get_by_text("get this app back up", exact=False)
+                  if btn.count() > 0:
+                      btn.first.click()
+                      print("האתר היה ישן — נלחץ כפתור ההערה")
+                      page.wait_for_load_state("networkidle", timeout=90000)
+                  else:
+                      print("האתר כבר ער")
+              except Exception as e:
+                  print("לא נמצא כפתור הערה:", e)
+
+              # משאיר חיבור חי כמה שניות כדי לרשום פעילות אמיתית
+              page.wait_for_timeout(15000)
+              browser.close()
+          print("בוצע")
+          EOF
