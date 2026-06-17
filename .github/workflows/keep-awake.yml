@@ -34,7 +34,9 @@ jobs:
           with sync_playwright() as p:
               browser = p.chromium.launch()
               page = browser.new_page()
-              page.goto(url, wait_until="networkidle", timeout=90000)
+              # Streamlit מחזיק websocket פתוח, אז "networkidle" אף פעם לא קורה.
+              # מחכים רק לטעינת ה-DOM (מספיק כדי להעיר את האתר).
+              page.goto(url, wait_until="domcontentloaded", timeout=60000)
 
               # אם האתר ישן — יופיע כפתור "get this app back up"
               try:
@@ -42,7 +44,7 @@ jobs:
                   if btn.count() > 0:
                       btn.first.click()
                       print("האתר היה ישן — נלחץ כפתור ההערה")
-                      page.wait_for_load_state("networkidle", timeout=90000)
+                      page.wait_for_load_state("domcontentloaded", timeout=60000)
                   else:
                       print("האתר כבר ער")
               except Exception as e:
