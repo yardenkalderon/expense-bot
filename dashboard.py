@@ -15,23 +15,28 @@ GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 CAT_COLORS = {
-    "אוכל ושתייה": "#B45309",
-    "קניות וסופר": "#15803D",
-    "תחבורה ודלק": "#D97706",
-    "פנאי ובילוי": "#DC2626",
-    "חשבונות ובית": "#6B7280",
-    "בריאות": "#0369A1",
-    "אחר": "#78716C",
+    "אוכל ושתייה": "#D97706",
+    "קניות וסופר": "#3E8E5A",
+    "תחבורה ודלק": "#4A7BA6",
+    "פנאי ובילוי": "#C64B77",
+    "חשבונות ובית": "#8F7F6C",
+    "בריאות": "#2E9E9B",
+    "אחר": "#A69B8D",
 }
 
-PLOT_LAYOUT = dict(
-    paper_bgcolor="rgba(0,0,0,0)",
-    plot_bgcolor="rgba(0,0,0,0)",
-    font_color="#78716C",
-    xaxis=dict(gridcolor="#D6D0C6", linecolor="#D6D0C6"),
-    yaxis=dict(gridcolor="#D6D0C6", linecolor="#D6D0C6"),
-    margin=dict(l=0, r=0, t=10, b=0),
-)
+def plot_layout():
+    """layout אחיד לגרפים, מודע לתמה (יום/לילה) — מתקן רשת בהירה בלילה."""
+    c = tc()
+    return dict(
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
+        font=dict(family="Heebo", color=c["muted"]),
+        xaxis=dict(linecolor=c["border"], showgrid=False, zeroline=False),
+        yaxis=dict(gridcolor=c["border"], linecolor=c["border"], griddash="dot", zeroline=False),
+        margin=dict(l=0, r=0, t=10, b=0),
+        hoverlabel=dict(bgcolor=c["bg"], bordercolor=c["border"],
+                        font=dict(family="Heebo", color=c["text"])),
+    )
 
 st.set_page_config(page_title="ניהול הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
 
@@ -67,6 +72,8 @@ _LIGHT = """
 .metric-card.hero .metric-label { color: rgba(255,255,255,.9) !important; }
 .metric-card.hero .metric-value { color: #FFFFFF !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(255,255,255,.22); color: #FFFFFF !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
+@keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.budget-bar-fill { transform-origin: right; animation: growBar .7s ease; }
 .stTabs [data-baseweb="tab-list"] { gap: 4px; background: #EDE8DC; border-radius: 10px; padding: 4px; }
 .stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #78716C; border: none; }
 .stTabs [aria-selected="true"] { background: #FFFFFF !important; color: #B45309 !important; border: 1px solid #D6D0C6 !important; box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important; }
@@ -124,6 +131,8 @@ _DARK = """
 .metric-card.hero .metric-label { color: rgba(28,16,8,.72) !important; }
 .metric-card.hero .metric-value { color: #1C1008 !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(0,0,0,.18); color: #1C1008 !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
+@keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
+.budget-bar-fill { transform-origin: right; animation: growBar .7s ease; }
 .stTabs [data-baseweb="tab-list"] { gap: 4px; background: #2C1A0E; border-radius: 10px; padding: 4px; }
 .stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #A08060; border: none; }
 .stTabs [aria-selected="true"] { background: #3D2010 !important; color: #F59E0B !important; border: 1px solid #5C3020 !important; box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important; }
@@ -697,7 +706,7 @@ def prev_month_str(month_str: str) -> str:
 
 
 def apply_dark_layout(fig, height=340):
-    fig.update_layout(height=height, **PLOT_LAYOUT)
+    fig.update_layout(height=height, **plot_layout())
     return fig
 
 
@@ -801,12 +810,17 @@ def tab_overview(df, df_prev, budgets, selected_month=None):
         st.markdown("### הוצאות לפי קטגוריה")
         with st.container():
             cat_df = df.groupby("category")["amount"].sum().reset_index()
-            colors = [CAT_COLORS.get(c, "#607D8B") for c in cat_df["category"]]
+            colors = [CAT_COLORS.get(c, "#A69B8D") for c in cat_df["category"]]
             fig = px.pie(cat_df, values="amount", names="category",
-                         color_discrete_sequence=colors, hole=0.42)
-            fig.update_traces(textinfo="percent+label", textposition="inside", textfont_size=12,
-                              textfont_color="#E0F0F8")
-            fig.update_layout(showlegend=False, height=340, **PLOT_LAYOUT)
+                         color_discrete_sequence=colors, hole=0.62)
+            fig.update_traces(textinfo="percent", textposition="inside", textfont_size=12,
+                              textfont_color="#FFFFFF",
+                              hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
+                              marker=dict(line=dict(color=tc()["bg"], width=2)))
+            fig.update_layout(showlegend=False, height=340, **plot_layout())
+            fig.add_annotation(text=f"<b>₪{cat_df['amount'].sum():,.0f}</b>",
+                               x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
+                               font=dict(size=20, family="Heebo", color=tc()["text"]))
             st.plotly_chart(fig, use_container_width=True, key="pie_overview")
 
     with col2:
@@ -816,14 +830,17 @@ def tab_overview(df, df_prev, budgets, selected_month=None):
                 curr = df.groupby("category")["amount"].sum()
                 prev = df_prev.groupby("category")["amount"].sum()
                 cmp = pd.DataFrame({"החודש": curr, "חודש קודם": prev}).fillna(0).reset_index()
+                c = tc()
                 fig2 = go.Figure([
-                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color="#B45309"),
-                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color="#EDE8DC",
-                           marker_line_color="#B45309", marker_line_width=1),
+                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color=c["accent"],
+                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra>החודש</extra>"),
+                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color=c["bg2"],
+                           marker_line_color=c["accent"], marker_line_width=1,
+                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra>חודש קודם</extra>"),
                 ])
-                fig2.update_layout(barmode="group", xaxis_tickangle=-25,
-                                   legend=dict(orientation="h", font_color="#78716C"),
-                                   height=340, **PLOT_LAYOUT)
+                fig2.update_layout(barmode="group", xaxis_tickangle=-25, barcornerradius=6,
+                                   legend=dict(orientation="h", font=dict(family="Heebo", color=c["muted"])),
+                                   height=340, **plot_layout())
                 st.plotly_chart(fig2, use_container_width=True, key="bar_compare")
             else:
                 st.info("אין נתוני חודש קודם להשוואה")
@@ -849,16 +866,18 @@ def tab_trends(df_all):
     pts = df2.groupby("period")["amount"].sum().reset_index()
 
     with st.container():
+        c = tc()
         fig = px.line(pts, x="period", y="amount", markers=True,
-                      color_discrete_sequence=["#B45309"],
+                      color_discrete_sequence=[c["accent"]],
                       labels={"period": "תאריך", "amount": "סכום (₪)"})
-        fig.update_traces(line_width=2.5, marker_size=7,
+        fig.update_traces(line_width=2.5, line_shape="spline", marker_size=7,
+                          fill="tozeroy", fillcolor="rgba(217,119,6,0.10)",
                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>")
         fig.update_layout(
             xaxis_title="תאריך", yaxis_title="סכום (₪)",
             xaxis_tickangle=-30,
             yaxis_tickformat=",.0f",
-            height=320, **PLOT_LAYOUT
+            height=320, **plot_layout()
         )
         st.plotly_chart(fig, use_container_width=True, key="line_trends")
 
@@ -870,13 +889,15 @@ def tab_trends(df_all):
         lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y"))
 
     with st.container():
+        c = tc()
         fig2 = px.bar(monthly, x="label", y="amount", text="amount",
-                      color_discrete_sequence=["#B45309"],
+                      color_discrete_sequence=[c["accent"]],
                       labels={"label": "חודש", "amount": "סכום (₪)"})
         fig2.update_traces(texttemplate="₪%{text:,.0f}", textposition="outside",
-                           textfont_color="#E0F0F8")
-        fig2.update_layout(xaxis_title="חודש", yaxis_title="סכום (₪)",
-                           yaxis_tickformat=",.0f", height=300, **PLOT_LAYOUT)
+                           textfont=dict(family="Heebo", color=c["muted"]),
+                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>")
+        fig2.update_layout(xaxis_title="חודש", yaxis_title="סכום (₪)", barcornerradius=6,
+                           yaxis_tickformat=",.0f", height=300, **plot_layout())
         st.plotly_chart(fig2, use_container_width=True, key="bar_monthly")
 
 
@@ -1151,20 +1172,57 @@ def tab_budget(df, selected_month, user_id, group_id=0):
         return
 
     cat_totals = df.groupby("category")["amount"].sum() if not df.empty else pd.Series(dtype=float)
+    c = tc()
+    dark = st.session_state.get("dark_mode", False)
+    track = c["bg2"]
 
+    def bar_color(p):
+        if dark:
+            return "#F07862" if p > 0.9 else "#E0A93B" if p > 0.7 else "#5FBF87"
+        return "#CF4A38" if p > 0.9 else "#DB8A0C" if p > 0.7 else "#3B8C5E"
+
+    # טבעת כוללת — כמה מהתקציב הכולל נוצל
+    total_budget = sum(active.values())
+    total_spent = float(sum(cat_totals.get(cat, 0) for cat in active))
+    overall = total_spent / total_budget if total_budget else 0
+    ring_pct = min(overall, 1.0) * 100
+    ring_color = bar_color(overall)
+    st.markdown(f"""
+    <div style="display:flex;align-items:center;gap:22px;justify-content:center;flex-wrap:wrap;margin:6px 0 18px">
+      <div style="width:150px;height:150px;border-radius:50%;flex-shrink:0;
+           background:conic-gradient({ring_color} 0 {ring_pct}%, {track} {ring_pct}% 100%);
+           display:grid;place-items:center">
+        <div style="width:114px;height:114px;border-radius:50%;background:{c['bg']};display:grid;place-items:center;text-align:center">
+          <div>
+            <div style="color:{c['text']};font-size:1.7rem;font-weight:700;line-height:1">{overall*100:.0f}%</div>
+            <div style="color:{c['muted']};font-size:0.72rem">מהתקציב</div>
+          </div>
+        </div>
+      </div>
+      <div style="text-align:center">
+        <div style="color:{c['muted']};font-size:0.8rem">הוצאת</div>
+        <div style="color:{c['text']};font-size:1.35rem;font-weight:700">₪{total_spent:,.0f}</div>
+        <div style="color:{c['muted']};font-size:0.8rem">מתוך ₪{total_budget:,.0f}</div>
+      </div>
+    </div>""", unsafe_allow_html=True)
+
+    # פסים דקים ומעוגלים לכל קטגוריה
+    rows = ""
     for cat, budget in active.items():
         spent = float(cat_totals.get(cat, 0))
-        pct = min(spent / budget, 1.0)
-        color = "#FF6B6B" if pct > 0.9 else "#FFB347" if pct > 0.7 else "#50C878"
-        col1, col2 = st.columns([3, 1])
-        with col1:
-            st.markdown(f"<span style='color:#1C1917;font-weight:600'>{cat}</span>",
-                        unsafe_allow_html=True)
-            st.progress(pct)
-        with col2:
-            st.markdown(f"<span style='color:{color};font-weight:600'>₪{spent:,.0f}</span>"
-                        f"<span style='color:#78716C'> / ₪{budget:,.0f}</span>",
-                        unsafe_allow_html=True)
+        pct = spent / budget if budget else 0
+        color = bar_color(pct)
+        rows += f"""
+        <div style="margin:12px 0">
+          <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:5px">
+            <span style="color:{c['text']};font-weight:500">{cat}</span>
+            <span style="color:{c['muted']}">₪{spent:,.0f} / ₪{budget:,.0f}</span>
+          </div>
+          <div style="height:9px;background:{track};border-radius:999px;overflow:hidden">
+            <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color};border-radius:999px"></div>
+          </div>
+        </div>"""
+    st.markdown(rows, unsafe_allow_html=True)
 
 
 def tab_shared(groups, uid, selected_month):
@@ -1216,9 +1274,12 @@ def tab_shared(groups, uid, selected_month):
     col1, col2 = st.columns(2)
     with col1:
         with st.container():
-            fig = px.pie(totals, values="amount", names="user_name",
-                         color_discrete_sequence=["#B45309", "#15803D", "#D97706", "#DC2626", "#6B7280"])
-            fig.update_layout(height=300, **PLOT_LAYOUT)
+            fig = px.pie(totals, values="amount", names="user_name", hole=0.55,
+                         color_discrete_sequence=["#D97706", "#3E8E5A", "#4A7BA6", "#C64B77", "#8F7F6C"])
+            fig.update_traces(textfont_color="#FFFFFF",
+                              hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
+                              marker=dict(line=dict(color=tc()["bg"], width=2)))
+            fig.update_layout(height=300, **plot_layout())
             st.plotly_chart(fig, use_container_width=True, key="pie_shared")
 
     with col2:
