@@ -61,6 +61,12 @@ _LIGHT = """
 .metric-card.purple { border-top-color: #6B7280; }
 .metric-value { font-size: 1.9rem; font-weight: 700; color: #1C1917; }
 .metric-label { font-size: 0.82rem; color: #78716C; margin-top: 4px; }
+.metric-card { transition: transform .2s ease, box-shadow .2s ease; }
+.metric-card:hover { transform: translateY(-2px); }
+.metric-card.hero { background: linear-gradient(135deg,#E28413,#B4530A); border: none; text-align: right; box-shadow: 0 2px 6px rgba(180,83,9,.25), 0 14px 30px -10px rgba(180,83,9,.4); }
+.metric-card.hero .metric-label { color: rgba(255,255,255,.9) !important; }
+.metric-card.hero .metric-value { color: #FFFFFF !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
+.metric-chip { display: inline-block; margin-top: 10px; background: rgba(255,255,255,.22); color: #FFFFFF !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
 .stTabs [data-baseweb="tab-list"] { gap: 4px; background: #EDE8DC; border-radius: 10px; padding: 4px; }
 .stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #78716C; border: none; }
 .stTabs [aria-selected="true"] { background: #FFFFFF !important; color: #B45309 !important; border: 1px solid #D6D0C6 !important; box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important; }
@@ -112,6 +118,12 @@ _DARK = """
 .metric-card.purple { border-top-color: #A78BFA; }
 .metric-value { font-size: 1.9rem; font-weight: 700; color: #F5E6D3; }
 .metric-label { font-size: 0.82rem; color: #A08060; margin-top: 4px; }
+.metric-card { transition: transform .2s ease, box-shadow .2s ease; }
+.metric-card:hover { transform: translateY(-2px); }
+.metric-card.hero { background: linear-gradient(135deg,#F5A623,#D97706); border: none; text-align: right; box-shadow: 0 2px 8px rgba(0,0,0,.45), 0 14px 30px -10px rgba(217,119,6,.5); }
+.metric-card.hero .metric-label { color: rgba(28,16,8,.72) !important; }
+.metric-card.hero .metric-value { color: #1C1008 !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
+.metric-chip { display: inline-block; margin-top: 10px; background: rgba(0,0,0,.18); color: #1C1008 !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
 .stTabs [data-baseweb="tab-list"] { gap: 4px; background: #2C1A0E; border-radius: 10px; padding: 4px; }
 .stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #A08060; border: none; }
 .stTabs [aria-selected="true"] { background: #3D2010 !important; color: #F59E0B !important; border: 1px solid #5C3020 !important; box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important; }
@@ -662,12 +674,21 @@ def login_page():
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
-def card(label, value, cls=""):
-    st.markdown(f"""
-    <div class="metric-card {cls}">
-        <div class="metric-value">{value}</div>
-        <div class="metric-label">{label}</div>
-    </div>""", unsafe_allow_html=True)
+def card(label, value, cls="", chip=None):
+    if "hero" in cls:
+        chip_html = f'<span class="metric-chip">{chip}</span>' if chip else ""
+        st.markdown(f"""
+        <div class="metric-card {cls}">
+            <div class="metric-label">{label}</div>
+            <div class="metric-value">{value}</div>
+            {chip_html}
+        </div>""", unsafe_allow_html=True)
+    else:
+        st.markdown(f"""
+        <div class="metric-card {cls}">
+            <div class="metric-value">{value}</div>
+            <div class="metric-label">{label}</div>
+        </div>""", unsafe_allow_html=True)
 
 
 def prev_month_str(month_str: str) -> str:
@@ -694,8 +715,17 @@ def tab_overview(df, df_prev, budgets):
     total_budget = sum(budgets.values()) if budgets else 0
     budget_pct = (total / total_budget * 100) if total_budget > 0 else None
 
-    c1, c2, c3, c4 = st.columns(4)
-    with c1: card("סה\"כ החודש", f"₪{total:,.0f}")
+    # שינוי מול חודש קודם — לכרטיס הגיבור
+    chip = None
+    if not df_prev.empty:
+        prev_total = df_prev["amount"].sum()
+        if prev_total > 0:
+            change = (total - prev_total) / prev_total * 100
+            arrow = "↑" if change >= 0 else "↓"
+            chip = f"{arrow} {abs(change):.0f}% מחודש שעבר"
+
+    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+    with c1: card("סה\"כ החודש", f"₪{total:,.0f}", "hero", chip=chip)
     with c2: card("ממוצע יומי", f"₪{daily_avg:,.0f}", "purple")
     with c3: card("קטגוריה מובילה", top_cat, "red")
     with c4:
