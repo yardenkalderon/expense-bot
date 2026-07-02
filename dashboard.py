@@ -3,7 +3,7 @@ import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 from supabase import create_client
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, date
 import hashlib
 import os
 import io
@@ -703,7 +703,52 @@ def apply_dark_layout(fig, height=340):
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-def tab_overview(df, df_prev, budgets):
+def _overview_insight(df, df_prev, budgets, selected_month, total):
+    """מחזיר (אימוג'י, טקסט) — תובנה חכמה אחת, או None. בלי AI, מיידי."""
+    total_budget = sum(budgets.values()) if budgets else 0
+
+    # 1) קצב מול תקציב — רק בחודש הנוכחי, כשיש חריגה צפויה
+    try:
+        y, m = map(int, selected_month.split("-"))
+        days_in_month = (date(y, m + 1, 1) - date(y, m, 1)).days if m < 12 else 31
+        now = datetime.now()
+        is_current = (now.year == y and now.month == m)
+        days_elapsed = now.day if is_current else days_in_month
+    except Exception:
+        is_current, days_elapsed, days_in_month = False, 30, 30
+
+    if total_budget > 0 and is_current and days_elapsed >= 3:
+        pace = total / max(days_elapsed, 1) * days_in_month
+        if pace > total_budget * 1.05:
+            return "⚠️", f"בקצב הנוכחי צפוי לחרוג מהתקציב ב-₪{pace - total_budget:,.0f} עד סוף החודש"
+
+    # 2) הקטגוריה עם השינוי הגדול ביותר מול חודש קודם
+    if not df_prev.empty:
+        curr = df.groupby("category")["amount"].sum()
+        prev = df_prev.groupby("category")["amount"].sum()
+        diffs = [(cat, (curr[cat] - prev.get(cat, 0)) / prev[cat] * 100)
+                 for cat in curr.index if prev.get(cat, 0) > 0]
+        if diffs:
+            cat, pct = max(diffs, key=lambda x: abs(x[1]))
+            if abs(pct) >= 15:
+                if pct > 0:
+                    return "📈", f"ההוצאות על {cat} עלו ב-{pct:.0f}% מהחודש שעבר"
+                return "📉", f"יפה! ההוצאות על {cat} ירדו ב-{abs(pct):.0f}% מהחודש שעבר"
+
+    # 3) קצב טוב מול תקציב (חיובי)
+    if total_budget > 0 and is_current and days_elapsed >= 3:
+        pace = total / max(days_elapsed, 1) * days_in_month
+        if pace < total_budget * 0.95:
+            return "🎯", f"אתה בקצב טוב — צפוי לסיים ₪{total_budget - pace:,.0f} מתחת לתקציב"
+
+    # 4) ברירת מחדל — נתח הקטגוריה המובילה
+    by_cat = df.groupby("category")["amount"].sum()
+    top_cat = by_cat.idxmax()
+    share = by_cat.max() / total * 100 if total > 0 else 0
+    return "💡", f"{top_cat} היא ההוצאה הגדולה שלך החודש — {share:.0f}% מסך ההוצאות"
+
+
+def tab_overview(df, df_prev, budgets, selected_month=None):
     if df.empty:
         st.info("אין הוצאות רשומות לחודש זה.")
         return
@@ -723,6 +768,21 @@ def tab_overview(df, df_prev, budgets):
             change = (total - prev_total) / prev_total * 100
             arrow = "↑" if change >= 0 else "↓"
             chip = f"{arrow} {abs(change):.0f}% מחודש שעבר"
+
+    # באנר תובנה חכמה — משפט אחד מחושב, בלי AI
+    insight = _overview_insight(df, df_prev, budgets, selected_month, total)
+    if insight:
+        c = tc()
+        emoji, text = insight
+        st.markdown(f"""
+        <div style="background: linear-gradient({c['bg']},{c['bg']}) padding-box,
+                    linear-gradient(135deg,#E28413,#C64B77) border-box;
+                    border: 1.5px solid transparent; border-radius: 14px;
+                    padding: 12px 16px; margin-bottom: 14px;
+                    display: flex; align-items: center; gap: 10px;">
+            <span style="font-size:1.3rem;line-height:1">{emoji}</span>
+            <span style="color:{c['text']};font-size:0.95rem;font-weight:500;text-align:right">{text}</span>
+        </div>""", unsafe_allow_html=True)
 
     c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
     with c1: card("סה\"כ החודש", f"₪{total:,.0f}", "hero", chip=chip)
@@ -1585,7 +1645,7 @@ def main():
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
         ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🔄 חוזרות", "🎯 תקציב", "👥 משותף", "🤖 Insights", "⚙️ הגדרות"])
 
-    with t1: tab_overview(df, df_prev, budgets)
+    with t1: tab_overview(df, df_prev, budgets, selected_month)
     with t2: tab_trends(df_all)
     with t3: tab_table(df_all, uid, selected_month, display_name)
     with t4: tab_recurring(uid)
