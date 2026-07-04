@@ -1,6 +1,8 @@
 import json
 import os
 import base64
+import hashlib
+import secrets
 import tempfile
 from datetime import datetime, timedelta, time as dtime
 from zoneinfo import ZoneInfo
@@ -47,7 +49,7 @@ def save_username(user_id, username):
 
 
 def get_monthly_report(user_id):
-    month = datetime.now().strftime("%Y-%m")
+    month = datetime.now(TZ).strftime("%Y-%m")
     result = db.table('expenses').select('category,amount').eq('user_id', user_id).like('date', f'{month}%').execute()
     rows = result.data
     if not rows:
@@ -56,7 +58,7 @@ def get_monthly_report(user_id):
     for row in rows:
         totals[row['category']] += row['amount']
     sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
-    report = f"📊 *סיכום הוצאות ל-{datetime.now().strftime('%m/%Y')}:*\n\n"
+    report = f"📊 *סיכום הוצאות ל-{datetime.now(TZ).strftime('%m/%Y')}:*\n\n"
     total = sum(totals.values())
     for cat, amt in sorted_totals:
         report += f"▫️ *{cat}:* {amt:,.2f} ש\"ח\n"
@@ -65,7 +67,7 @@ def get_monthly_report(user_id):
 
 
 def get_week_report(user_id):
-    week_ago = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
+    week_ago = (datetime.now(TZ) - timedelta(days=7)).strftime("%Y-%m-%d")
     result = db.table('expenses').select('category,amount').eq('user_id', user_id).gte('date', week_ago).execute()
     rows = result.data
     if not rows:
@@ -82,13 +84,13 @@ def get_week_report(user_id):
 
 
 def get_category_budget(user_id, category):
-    month = datetime.now().strftime("%Y-%m")
+    month = datetime.now(TZ).strftime("%Y-%m")
     result = db.table('budgets').select('amount').eq('user_id', user_id).eq('month', month).eq('category', category).eq('group_id', 0).execute()
     return result.data[0]['amount'] if result.data else None
 
 
 def get_category_spent(user_id, category):
-    month = datetime.now().strftime("%Y-%m")
+    month = datetime.now(TZ).strftime("%Y-%m")
     result = db.table('expenses').select('amount').eq('user_id', user_id).like('date', f'{month}%').eq('category', category).execute()
     return sum(r['amount'] for r in (result.data or []))
 
@@ -133,7 +135,7 @@ def save_expense(user_id, amount, category, item):
         'amount': amount,
         'category': category,
         'item': item,
-        'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        'date': datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
     }).execute()
     return result.data[0]['id'] if result.data else None
 
@@ -203,7 +205,8 @@ async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "צפה בגרפים, ניתוח AI, הוצאות חוזרות,\n"
             "תקציב חודשי והוצאות משותפות עם הקבוצה שלך.\n\n"
             f"🔗 {DASHBOARD_URL}\n"
-            "🪪 לקבלת המזהה שלך לכניסה: /myid"
+            "🪪 לקבלת המזהה שלך לכניסה: /myid\n"
+            "🔑 שכחת סיסמה לדשבורד? /resetpass"
         )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
@@ -214,6 +217,26 @@ async def myid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if DASHBOARD_URL:
         text += f"\n\n📊 השתמש במזהה זה בעת ההרשמה לדשבורד:\n{DASHBOARD_URL}"
     await update.message.reply_text(text, parse_mode='Markdown')
+
+
+async def resetpass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """שולח קוד אימות חד-פעמי לאיפוס סיסמת הדשבורד. רק למשתמשים מורשים."""
+    if not update.message:
+        return
+    user_id = update.message.from_user.id
+    if not is_authorized(user_id):
+        return
+    code = f"{secrets.randbelow(1000000):06d}"
+    expires = (datetime.now(TZ) + timedelta(minutes=15)).isoformat()
+    db.table('authorized_users').update({
+        'reset_code': hashlib.sha256(code.encode()).hexdigest(),
+        'reset_code_expires': expires
+    }).eq('user_id', user_id).execute()
+    await update.message.reply_text(
+        f"🔑 *קוד אימות לאיפוס סיסמה בדשבורד:*\n\n`{code}`\n\n"
+        f"הזן אותו בטופס \"שכחתי סיסמה\" בדשבורד.\nהקוד תקף ל-15 דקות.",
+        parse_mode='Markdown'
+    )
 
 
 async def check_auth(update: Update, user_text: str) -> bool:
@@ -753,6 +776,7 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("start", start_help))
     app.add_handler(CommandHandler("help", start_help))
     app.add_handler(CommandHandler("myid", myid_cmd))
+    app.add_handler(CommandHandler("resetpass", resetpass_cmd))
     app.add_handler(CommandHandler("week", weekly_report_cmd))
     app.add_handler(CallbackQueryHandler(handle_recurring_callback, pattern="^rec_"))
     app.add_handler(CallbackQueryHandler(handle_share_callback,     pattern="^share_"))

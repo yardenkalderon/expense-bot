@@ -4,6 +4,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 from supabase import create_client
 from datetime import datetime, timedelta, date
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("Asia/Jerusalem")
 import hashlib
 import os
 import io
@@ -619,22 +622,35 @@ def login_page():
             # ── שחזור סיסמה ──
             st.markdown("<br>", unsafe_allow_html=True)
             with st.expander("🔓 שכחתי סיסמה"):
+                st.markdown("<span style='color:#78716C;font-size:0.85rem'>שלח /resetpass לבוט בטלגרם לקבלת קוד אימות</span>",
+                            unsafe_allow_html=True)
                 r_uid = st.number_input("Telegram user_id שלך", min_value=1, step=1, key="reset_uid")
+                r_code = st.text_input("קוד אימות מהבוט", max_chars=6, key="reset_code")
                 r_pass1 = st.text_input("סיסמה חדשה", type="password", key="reset_p1")
                 r_pass2 = st.text_input("אימות סיסמה חדשה", type="password", key="reset_p2")
                 if st.button("אפס סיסמה", use_container_width=True, key="reset_btn"):
-                    if not r_pass1 or not r_pass2:
+                    if not r_code or not r_pass1 or not r_pass2:
                         st.error("מלא את כל השדות")
                     elif r_pass1 != r_pass2:
                         st.error("הסיסמאות אינן תואמות")
                     else:
                         db = get_db()
-                        res = db.table("authorized_users").select("user_id").eq("user_id", int(r_uid)).execute()
-                        if not res.data:
-                            st.error("המזהה לא נמצא במערכת — בדוק שהתחברת לבוט קודם")
+                        res = db.table("authorized_users").select("user_id,reset_code,reset_code_expires").eq("user_id", int(r_uid)).execute()
+                        row = res.data[0] if res.data else None
+                        code_ok = False
+                        if row and row.get("reset_code"):
+                            try:
+                                not_expired = datetime.fromisoformat(row["reset_code_expires"]) > datetime.now(TZ)
+                            except (TypeError, ValueError):
+                                not_expired = False
+                            code_ok = not_expired and hash_pw(r_code.strip()) == row["reset_code"]
+                        if not code_ok:
+                            st.error("קוד שגוי או שפג תוקפו — שלח /resetpass לבוט לקבלת קוד חדש")
                         else:
                             db.table("authorized_users").update({
-                                "dashboard_password": hash_pw(r_pass1)
+                                "dashboard_password": hash_pw(r_pass1),
+                                "reset_code": None,
+                                "reset_code_expires": None,
                             }).eq("user_id", int(r_uid)).execute()
                             st.success("✅ הסיסמה עודכנה! כנס עם הסיסמה החדשה")
 
@@ -659,9 +675,11 @@ def login_page():
                         st.error(e)
                 else:
                     db = get_db()
-                    # בדוק אם user_id קיים
-                    check_uid = db.table("authorized_users").select("user_id").eq("user_id", int(r_telegram_id)).execute()
-                    if check_uid.data and check_uid.data[0].get("dashboard_username"):
+                    # הרשמה מותרת רק למזהה שכבר אושר בבוט (עבר את סיסמת הבוט)
+                    check_uid = db.table("authorized_users").select("user_id,dashboard_username").eq("user_id", int(r_telegram_id)).execute()
+                    if not check_uid.data:
+                        st.error("המזהה לא נמצא במערכת — התחבר קודם לבוט בטלגרם עם הסיסמה, ואז הירשם כאן")
+                    elif check_uid.data[0].get("dashboard_username"):
                         st.error("המזהה הזה כבר רשום במערכת")
                     else:
                         # בדוק אם שם משתמש תפוס
@@ -669,13 +687,12 @@ def login_page():
                         if check_uname.data:
                             st.error("שם המשתמש כבר תפוס — בחר שם אחר")
                         else:
-                            db.table("authorized_users").upsert({
-                                "user_id": int(r_telegram_id),
+                            db.table("authorized_users").update({
                                 "username": r_display,
                                 "dashboard_username": r_username,
                                 "dashboard_password": hash_pw(r_pw1),
                                 "is_admin": False,
-                            }).execute()
+                            }).eq("user_id", int(r_telegram_id)).execute()
                             fetch_users.clear()
                             st.success("✅ נרשמת בהצלחה! עבור לטאב כניסה והתחבר")
                             st.balloons()
@@ -720,7 +737,7 @@ def _overview_insight(df, df_prev, budgets, selected_month, total):
     try:
         y, m = map(int, selected_month.split("-"))
         days_in_month = (date(y, m + 1, 1) - date(y, m, 1)).days if m < 12 else 31
-        now = datetime.now()
+        now = datetime.now(TZ)
         is_current = (now.year == y and now.month == m)
         days_elapsed = now.day if is_current else days_in_month
     except Exception:
@@ -1011,7 +1028,7 @@ def tab_table(df_all, user_id, selected_month, display_name):
             with c3:
                 m_item = st.text_input("פריט")
             with c4:
-                m_date = st.date_input("תאריך", value=datetime.now().date())
+                m_date = st.date_input("תאריך", value=datetime.now(TZ).date())
             if st.form_submit_button("➕ הוסף"):
                 if m_amount > 0 and m_item:
                     add_expense(user_id, m_amount, m_category, m_item, m_date)
@@ -1633,7 +1650,7 @@ def main():
     uid = user["user_id"]
     display_name = user.get("username") or user.get("dashboard_username", "")
 
-    now = datetime.now()
+    now = datetime.now(TZ)
     month_options = []
     for i in range(12):
         d = now.replace(day=1) - timedelta(days=i * 30)
