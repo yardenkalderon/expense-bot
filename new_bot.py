@@ -266,6 +266,33 @@ async def check_auth(update: Update, user_text: str) -> bool:
     return False
 
 
+async def _register_expense(update: Update, context: ContextTypes.DEFAULT_TYPE,
+                            user_id: int, amount, category: str, item: str, header: str = ""):
+    """שומר הוצאה, שולח אישור עם כפתורים, ובודק תקציב. משותף לטקסט/קול/קבלה."""
+    exp_id = save_expense(user_id, amount, category, item)
+    conf_text = f"{header}✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
+    if exp_id and get_user_groups_with_names(user_id):
+        conf_text += "\n\n*לאן לשייך?*"
+    await update.message.reply_text(conf_text, reply_markup=_full_keyboard(exp_id, user_id), parse_mode='Markdown')
+    # התראת תקציב
+    budget = get_category_budget(user_id, category)
+    if budget:
+        spent = get_category_spent(user_id, category)
+        pct = spent / budget
+        if pct >= 1.0:
+            await update.message.reply_text(
+                f"🚨 חרגת מהתקציב בקטגוריה *{category}*!\n"
+                f"הוצאת *{spent:,.0f} ש\"ח* מתוך תקציב *{budget:,.0f} ש\"ח*",
+                parse_mode='Markdown'
+            )
+        elif pct >= 0.9:
+            await update.message.reply_text(
+                f"⚠️ הגעת ל-{pct*100:.0f}% מהתקציב בקטגוריה *{category}*!\n"
+                f"נשאר לך רק *{budget - spent:,.0f} ש\"ח*",
+                parse_mode='Markdown'
+            )
+
+
 async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: int, text: str):
     try:
         data = analyze_text_with_ai(text)
@@ -273,56 +300,7 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         category = data.get('category', 'אחר')
         item = data.get('item', 'לא ידוע')
         if amount > 0:
-            exp_id = save_expense(user_id, amount, category, item)
-            conf_text = f"✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
-            edit_del_row = [
-                InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
-                InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
-            ]
-            user_groups = get_user_groups_with_names(user_id)
-            if user_groups and exp_id:
-                conf_text += "\n\n*לאן לשייך?*"
-                btn_rows = []
-                for g in user_groups:
-                    btn_rows.append([InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")])
-                btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
-                btn_rows.append(edit_del_row)
-                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup(btn_rows), parse_mode='Markdown')
-            else:
-                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup([edit_del_row]), parse_mode='Markdown')
-            # התראת תקציב
-            budget = get_category_budget(user_id, category)
-            if budget:
-                spent = get_category_spent(user_id, category)
-                pct = spent / budget
-                if pct >= 1.0:
-                    await update.message.reply_text(
-                        f"🚨 חרגת מהתקציב בקטגוריה *{category}*!\n"
-                        f"הוצאת *{spent:,.0f} ש\"ח* מתוך תקציב *{budget:,.0f} ש\"ח*",
-                        parse_mode='Markdown'
-                    )
-                elif pct >= 0.9:
-                    await update.message.reply_text(
-                        f"⚠️ הגעת ל-{pct*100:.0f}% מהתקציב בקטגוריה *{category}*!\n"
-                        f"נשאר לך רק *{budget - spent:,.0f} ש\"ח*",
-                        parse_mode='Markdown'
-                    )
-            # הודעה לחברי קבוצה
-            username = get_username(user_id) or "חבר קבוצה"
-            group_ids = get_user_groups(user_id)
-            notified = set()
-            for gid in group_ids:
-                for member_id in get_group_other_members(user_id, gid):
-                    if member_id not in notified:
-                        try:
-                            await context.bot.send_message(
-                                chat_id=member_id,
-                                text=f"💸 *{username}* הוסיף: *{amount:,.0f} ש\"ח* על {item} ({category})",
-                                parse_mode='Markdown'
-                            )
-                            notified.add(member_id)
-                        except Exception:
-                            pass
+            await _register_expense(update, context, user_id, amount, category, item)
         else:
             await update.message.reply_text(
                 "לא הצלחתי לזהות סכום. נסה לנסח מחדש, למשל: _קפה 15 שקל_",
@@ -403,37 +381,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             category = 'אחר'
         item = data.get('item', 'לא ידוע')
         if amount > 0:
-            exp_id = save_expense(user_id, amount, category, item)
-            conf_text = f"🧾 קבלה זוהתה!\n✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
-            edit_del_row = [
-                InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
-                InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
-            ]
-            user_groups = get_user_groups_with_names(user_id)
-            if user_groups and exp_id:
-                conf_text += "\n\n*לאן לשייך?*"
-                btn_rows = []
-                for g in user_groups:
-                    btn_rows.append([InlineKeyboardButton(f"👥 {g['name']}", callback_data=f"share_grp_{exp_id}_{g['id']}")])
-                btn_rows.append([InlineKeyboardButton("👤 אישי", callback_data=f"share_skip_{exp_id}")])
-                btn_rows.append(edit_del_row)
-                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup(btn_rows), parse_mode='Markdown')
-            else:
-                await update.message.reply_text(conf_text, reply_markup=InlineKeyboardMarkup([edit_del_row]), parse_mode='Markdown')
-            budget = get_category_budget(user_id, category)
-            if budget:
-                spent = get_category_spent(user_id, category)
-                pct = spent / budget
-                if pct >= 1.0:
-                    await update.message.reply_text(
-                        f"🚨 חרגת מהתקציב בקטגוריה *{category}*!\nהוצאת *{spent:,.0f} ש\"ח* מתוך *{budget:,.0f} ש\"ח*",
-                        parse_mode='Markdown'
-                    )
-                elif pct >= 0.9:
-                    await update.message.reply_text(
-                        f"⚠️ הגעת ל-{pct*100:.0f}% מהתקציב בקטגוריה *{category}*!\nנשאר לך *{budget - spent:,.0f} ש\"ח*",
-                        parse_mode='Markdown'
-                    )
+            await _register_expense(update, context, user_id, amount, category, item, header="🧾 קבלה זוהתה!\n")
         else:
             await update.message.reply_text("לא הצלחתי לזהות סכום בקבלה. נסה לצלם שוב בצורה ברורה יותר.")
     except Exception:
@@ -624,6 +572,18 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 parse_mode='Markdown',
                 reply_markup=edit_del_kb
             )
+            # התראה לחברי הקבוצה — רק אחרי שההוצאה שויכה אליה בפועל
+            sharer_id = query.from_user.id
+            username = get_username(sharer_id) or "חבר קבוצה"
+            for member_id in get_group_other_members(sharer_id, group_id):
+                try:
+                    await context.bot.send_message(
+                        chat_id=member_id,
+                        text=f"💸 *{username}* הוסיף ל*{group_name}*: *{row['amount']:,.0f} ש\"ח* על {row['item']} ({row['category']})",
+                        parse_mode='Markdown'
+                    )
+                except Exception:
+                    pass
         else:
             await query.edit_message_reply_markup(reply_markup=edit_del_kb)
     else:  # skip — keep as personal
@@ -632,13 +592,6 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
             InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
             InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
         ]]))
-
-
-def _edit_del_keyboard(exp_id):
-    return InlineKeyboardMarkup([[
-        InlineKeyboardButton("✏️ ערוך", callback_data=f"edit_start_{exp_id}"),
-        InlineKeyboardButton("🗑️ מחק",  callback_data=f"del_{exp_id}")
-    ]])
 
 
 def _full_keyboard(exp_id, user_id):

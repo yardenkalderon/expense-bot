@@ -8,9 +8,11 @@ from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Asia/Jerusalem")
 import hashlib
+import html
 import os
 import io
 import tempfile
+import time
 
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
@@ -202,6 +204,15 @@ def get_db():
 
 def hash_pw(pw: str) -> str:
     return hashlib.sha256(pw.encode()).hexdigest()
+
+
+@st.cache_resource
+def _login_attempts():
+    """מונה ניסיונות כניסה כושלים — משותף לכל הסשנים (נאפס בהפעלה מחדש)."""
+    return {}
+
+LOCKOUT_ATTEMPTS = 5
+LOCKOUT_SECONDS = 300  # 5 דקות
 
 
 @st.cache_data(ttl=30)
@@ -606,18 +617,29 @@ def login_page():
             username = st.text_input("שם משתמש", placeholder="שם משתמש", key="login_user")
             password = st.text_input("סיסמה", type="password", placeholder="סיסמה", key="login_pass")
             if st.button("כניסה", use_container_width=True, key="login_btn"):
-                db = get_db()
-                res = db.table("authorized_users").select("*").eq("dashboard_username", username).execute()
-                if res.data:
-                    user = res.data[0]
-                    if user.get("dashboard_password", "") == hash_pw(password):
+                attempts = _login_attempts()
+                info = attempts.get(username, {"fails": 0, "locked_until": 0})
+                if time.time() < info["locked_until"]:
+                    wait_min = int((info["locked_until"] - time.time()) / 60) + 1
+                    st.error(f"🚫 יותר מדי ניסיונות כושלים — נסה שוב בעוד כ-{wait_min} דקות")
+                else:
+                    db = get_db()
+                    res = db.table("authorized_users").select("*").eq("dashboard_username", username).execute()
+                    user = res.data[0] if res.data else None
+                    if user and user.get("dashboard_password", "") == hash_pw(password):
+                        attempts.pop(username, None)
                         st.session_state.logged_in = True
                         st.session_state.user = user
                         st.rerun()
                     else:
-                        st.error("סיסמה שגויה")
-                else:
-                    st.error("משתמש לא נמצא")
+                        info["fails"] += 1
+                        if info["fails"] >= LOCKOUT_ATTEMPTS:
+                            info["locked_until"] = time.time() + LOCKOUT_SECONDS
+                            info["fails"] = 0
+                            st.error("🚫 יותר מדי ניסיונות כושלים — החשבון ננעל ל-5 דקות")
+                        else:
+                            st.error("שם משתמש או סיסמה שגויים")
+                        attempts[username] = info
 
             # ── שחזור סיסמה ──
             st.markdown("<br>", unsafe_allow_html=True)
@@ -720,11 +742,6 @@ def card(label, value, cls="", chip=None):
 def prev_month_str(month_str: str) -> str:
     d = datetime.strptime(month_str, "%Y-%m")
     return (d.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
-
-
-def apply_dark_layout(fig, height=340):
-    fig.update_layout(height=height, **plot_layout())
-    return fig
 
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
@@ -966,7 +983,7 @@ def tab_recurring(user_id):
             name_style = "color:#1C1917" if active else "color:#78716C;text-decoration:line-through"
             st.markdown(
                 f"<div style='text-align:right;line-height:1.55'>"
-                f"<span style='{name_style};font-weight:700;font-size:1.05rem'>{row['item']}</span>"
+                f"<span style='{name_style};font-weight:700;font-size:1.05rem'>{html.escape(str(row['item']))}</span>"
                 f"<span style='color:#B45309;font-weight:700'> · ₪{row['amount']:,.0f}</span><br>"
                 f"<span style='color:#78716C;font-size:0.85rem'>{row['category']} · יום {row['day_of_month']} בחודש</span>"
                 f"</div>",
@@ -1281,7 +1298,7 @@ def tab_shared(groups, uid, selected_month):
     st.markdown(
         f"<div style='background:{tc()['bg2']};border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem;border:1px solid {tc()['border']}'>"
         f"<span style='color:{tc()['muted']}'>חברי הקבוצה ({len(member_ids)}): </span>"
-        f"<span style='color:{tc()['text']};font-weight:600'>{' · '.join(member_names)}</span>"
+        f"<span style='color:{tc()['text']};font-weight:600'>{html.escape(' · '.join(member_names))}</span>"
         f"</div>",
         unsafe_allow_html=True)
 
@@ -1303,7 +1320,7 @@ def tab_shared(groups, uid, selected_month):
         st.markdown("#### מי שילם כמה")
         for _, row in totals.iterrows():
             st.markdown(
-                f"<span style='color:#1C1917;font-weight:600'>{row['user_name']}:</span> "
+                f"<span style='color:#1C1917;font-weight:600'>{html.escape(str(row['user_name']))}:</span> "
                 f"<span style='color:#B45309;font-weight:700'>₪{row['amount']:,.0f}</span> "
                 f"<span style='color:#78716C'>({row['אחוז']}%)</span>",
                 unsafe_allow_html=True)
@@ -1319,9 +1336,9 @@ def tab_shared(groups, uid, selected_month):
                 st.markdown(
                     f"<div style='background:{tc()['bg']};border-radius:8px;padding:0.6rem 1rem;"
                     f"margin:4px 0;border:1px solid {tc()['border']};border-right:3px solid {tc()['danger']}'>"
-                    f"<span style='color:{tc()['text']};font-weight:600'>{debtor}</span>"
+                    f"<span style='color:{tc()['text']};font-weight:600'>{html.escape(str(debtor))}</span>"
                     f"<span style='color:{tc()['muted']}'> חייב ל</span>"
-                    f"<span style='color:{tc()['text']};font-weight:600'>{creditor}</span>"
+                    f"<span style='color:{tc()['text']};font-weight:600'>{html.escape(str(creditor))}</span>"
                     f"<span style='color:{tc()['accent2']};font-weight:700'> ₪{amount:,.0f}</span>"
                     f"</div>",
                     unsafe_allow_html=True)
@@ -1578,7 +1595,7 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
             f"""<div style='background:{tc()['bg']};border-radius:12px;padding:1.4rem 1.6rem;
             border:1px solid {tc()['border']};border-right:4px solid {tc()['accent']};direction:rtl;
             line-height:1.8;color:{tc()['text']};font-family:Heebo,sans-serif;
-            white-space:pre-wrap;text-align:right;box-shadow:0 1px 4px rgba(0,0,0,0.08)'>{insight_text}</div>""",
+            white-space:pre-wrap;text-align:right;box-shadow:0 1px 4px rgba(0,0,0,0.08)'>{html.escape(insight_text)}</div>""",
             unsafe_allow_html=True
         )
 
@@ -1593,7 +1610,7 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
             st.markdown(
                 f"<div style='background:{tc()['bg2']};border-radius:10px;padding:0.7rem 1rem;"
                 f"margin:6px 0;direction:rtl;text-align:right;color:{tc()['text']};font-family:Heebo,sans-serif'>"
-                f"🙋 {msg['content']}</div>",
+                f"🙋 {html.escape(msg['content'])}</div>",
                 unsafe_allow_html=True
             )
         else:
@@ -1601,7 +1618,7 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
                 f"<div style='background:{tc()['bg']};border-radius:10px;padding:0.7rem 1rem;"
                 f"margin:6px 0;border:1px solid {tc()['border']};border-right:3px solid {tc()['accent']};direction:rtl;"
                 f"text-align:right;color:{tc()['text']};font-family:Heebo,sans-serif;white-space:pre-wrap'>"
-                f"🤖 {msg['content']}</div>",
+                f"🤖 {html.escape(msg['content'])}</div>",
                 unsafe_allow_html=True
             )
 
@@ -1652,9 +1669,10 @@ def main():
 
     now = datetime.now(TZ)
     month_options = []
-    for i in range(12):
-        d = now.replace(day=1) - timedelta(days=i * 30)
-        month_options.append(d.strftime("%Y-%m"))
+    m = now.strftime("%Y-%m")
+    for _ in range(12):
+        month_options.append(m)
+        m = prev_month_str(m)
 
     groups = fetch_groups(uid)
     group_options = ["אני בלבד"] + [g["name"] for g in groups]
