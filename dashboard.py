@@ -1066,11 +1066,13 @@ def tab_table(df_all, user_id, selected_month, display_name):
 
     col1, col2 = st.columns(2)
     months = ["הכל"] + sorted(df_all["date"].dt.strftime("%Y-%m").unique(), reverse=True)
+    # ברירת מחדל: החודש שנבחר בראש הדשבורד (אפשר עדיין לבחור "הכל")
+    default_idx = months.index(selected_month) if selected_month in months else 0
     with col1:
-        sel_month = st.selectbox("חודש", months,
+        sel_month = st.selectbox("חודש", months, index=default_idx,
                                   format_func=lambda x: x if x == "הכל" else
                                   datetime.strptime(x, "%Y-%m").strftime("%m/%Y"),
-                                  key="table_month")
+                                  key=f"table_month_{selected_month}")
     with col2:
         sel_cat = st.selectbox("קטגוריה", ["הכל"] + CATEGORIES, key="table_cat")
 

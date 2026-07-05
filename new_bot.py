@@ -691,6 +691,28 @@ async def handle_del_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         await query.edit_message_text("לא נמצאה ההוצאה.")
 
 
+def copy_budgets_for_new_month():
+    """ב-1 בחודש: מעתיק תקציב מהחודש הקודם לכל משתמש/קבוצה שעוד אין להם תקציב החודש."""
+    now = datetime.now(TZ)
+    current_month = now.strftime("%Y-%m")
+    prev_month = (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    prev_rows = db.table('budgets').select('*').eq('month', prev_month).execute().data or []
+    if not prev_rows:
+        return
+    curr_rows = db.table('budgets').select('user_id,group_id').eq('month', current_month).execute().data or []
+    has_current = {(r['user_id'], r.get('group_id', 0)) for r in curr_rows}
+    for r in prev_rows:
+        if (r['user_id'], r.get('group_id', 0)) in has_current:
+            continue  # כבר הוגדר תקציב החודש — לא דורסים
+        db.table('budgets').insert({
+            'user_id': r['user_id'],
+            'group_id': r.get('group_id', 0),
+            'month': current_month,
+            'category': r['category'],
+            'amount': r['amount'],
+        }).execute()
+
+
 async def send_monthly_summaries(bot):
     result = db.table('authorized_users').select('user_id').execute()
     for row in (result.data or []):
@@ -713,6 +735,12 @@ async def _monthly_job(context: ContextTypes.DEFAULT_TYPE):
         await send_monthly_summaries(context.bot)
 
 
+async def _budget_copy_job(context: ContextTypes.DEFAULT_TYPE):
+    # רץ כל יום ב-00:10 — מעתיק תקציב רק ב-1 בחודש
+    if datetime.now(TZ).day == 1:
+        copy_budgets_for_new_month()
+
+
 async def post_init(application):
     jq = application.job_queue
     # תזכורת יומית ב-09:00 שעון ישראל
@@ -721,6 +749,9 @@ async def post_init(application):
     jq.run_repeating(_recurring_job, interval=3600, first=10)
     # סיכום חודשי ב-20:00 ביום האחרון של החודש
     jq.run_daily(_monthly_job, time=dtime(hour=20, minute=0, tzinfo=TZ))
+    # העתקת תקציב אוטומטית ב-1 בחודש (00:10), כולל השלמה אם הבוט הופעל מחדש באותו יום
+    jq.run_daily(_budget_copy_job, time=dtime(hour=0, minute=10, tzinfo=TZ))
+    jq.run_once(_budget_copy_job, when=20)
 
 
 if __name__ == '__main__':
