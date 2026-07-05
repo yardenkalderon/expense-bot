@@ -53,6 +53,13 @@ html, body, [class*="css"] { font-family: 'Heebo', sans-serif; direction: rtl; }
 header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
 #MainMenu { visibility: hidden; } footer { visibility: hidden; }
 [data-testid="stToolbar"] { display: none; }
+@media (prefers-reduced-motion: no-preference) {
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+    .metric-card { animation: fadeUp .45s ease both; }
+    [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:nth-child(2) .metric-card { animation-delay: .07s; }
+    [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:nth-child(3) .metric-card { animation-delay: .14s; }
+    [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:nth-child(4) .metric-card { animation-delay: .21s; }
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -99,7 +106,7 @@ label, .stRadio label, .stCheckbox label { color: #78716C !important; }
 [data-testid="stDataFrame"] td { color: #1C1917 !important; }
 h1, h2, h3, h4 { color: #1C1917 !important; text-align: right !important; }
 p, span, div { color: #78716C; text-align: right; }
-hr { border-color: #D6D0C6; }
+hr { border: none !important; border-top: 1px solid #EFE8DA !important; margin: 0.7rem 0 !important; }
 details { background: #FFFFFF; border-radius: 10px; border: 1px solid #D6D0C6 !important; }
 summary { color: #1C1917 !important; }
 .stProgress > div > div { background-color: #B45309; }
@@ -153,11 +160,10 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 .stTextInput input, .stSelectbox select, .stNumberInput input { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; border-radius: 8px !important; }
 .stSelectbox > div > div { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; }
 label, .stRadio label, .stCheckbox label { color: #A08060 !important; }
-[data-testid="stDataFrame"] { -webkit-filter: invert(1) hue-rotate(180deg) !important; filter: invert(1) hue-rotate(180deg) !important; border-radius: 10px; border: 1px solid #3D2010; }
-[data-testid="stDataFrame"] > div { -webkit-filter: invert(1) hue-rotate(180deg) !important; filter: invert(1) hue-rotate(180deg) !important; }
+[data-testid="stDataFrame"] { border-radius: 10px; border: 1px solid #5C3020; overflow: hidden; }
 h1, h2, h3, h4 { color: #F5E6D3 !important; text-align: right !important; }
 p, span, div { color: #A08060; text-align: right; }
-hr { border-color: #3D2010; }
+hr { border: none !important; border-top: 1px solid #33261A !important; margin: 0.7rem 0 !important; }
 details { background: #2C1A0E; border-radius: 10px; border: 1px solid #3D2010 !important; }
 summary { color: #F5E6D3 !important; }
 .stProgress > div > div { background-color: #D97706; }
@@ -447,22 +453,22 @@ def generate_pdf(df, selected_month, display_name):
         pdf.set_font("Helvetica", size=size)
 
     def bg_page():
-        pdf.set_fill_color(15, 25, 35)
+        pdf.set_fill_color(250, 246, 238)
         pdf.rect(0, 0, 210, 297, "F")
 
     bg_page()
 
     # ── Title bar ──
-    pdf.set_fill_color(22, 38, 52)
+    pdf.set_fill_color(194, 87, 12)
     pdf.rect(0, 0, 210, 30, "F")
 
     set_num(16)
-    pdf.set_text_color(0, 201, 167)
+    pdf.set_text_color(255, 255, 255)
     pdf.set_xy(10, 5)
     pdf.cell(0, 10, f"Expense Report  {month_label}", align="R")
 
     set_heb(9)
-    pdf.set_text_color(90, 143, 168)
+    pdf.set_text_color(255, 231, 209)
     pdf.set_xy(10, 18)
     pdf.cell(0, 7, heb(display_name), align="R")
 
@@ -486,14 +492,14 @@ def generate_pdf(df, selected_month, display_name):
 
         for cx, (lbl, val, is_heb_val) in zip(card_xs, card_data):
             # Card background
-            pdf.set_fill_color(26, 48, 64)
+            pdf.set_fill_color(255, 255, 255)
             pdf.rect(cx, card_y, card_w, card_h, "F")
             # Accent top border
-            pdf.set_fill_color(0, 201, 167)
+            pdf.set_fill_color(194, 87, 12)
             pdf.rect(cx, card_y, card_w, 2, "F")
             # Label
             set_heb(7)
-            pdf.set_text_color(90, 143, 168)
+            pdf.set_text_color(143, 127, 108)
             pdf.set_xy(cx, card_y + 4)
             pdf.cell(card_w, 5, lbl, align="C")
             # Value — use correct font
@@ -501,7 +507,7 @@ def generate_pdf(df, selected_month, display_name):
                 set_heb(10)
             else:
                 set_num(12)
-            pdf.set_text_color(224, 240, 248)
+            pdf.set_text_color(38, 32, 26)
             pdf.set_xy(cx, card_y + 11)
             pdf.cell(card_w, 8, val, align="C")
 
@@ -514,8 +520,8 @@ def generate_pdf(df, selected_month, display_name):
     COL_ITEM = 76   # 28+38+48+76 = 190
 
     def draw_table_header():
-        pdf.set_fill_color(0, 201, 167)
-        pdf.set_text_color(15, 25, 35)
+        pdf.set_fill_color(194, 87, 12)
+        pdf.set_text_color(255, 255, 255)
         set_heb(9)
         pdf.set_x(x0)
         pdf.cell(COL_DATE, 9, heb("תאריך"),    fill=True, align="C")
@@ -536,7 +542,7 @@ def generate_pdf(df, selected_month, display_name):
                 pdf.set_y(15)
                 draw_table_header()
 
-            fill_r, fill_g, fill_b = (22, 38, 52) if i % 2 == 0 else (18, 30, 42)
+            fill_r, fill_g, fill_b = (255, 255, 255) if i % 2 == 0 else (245, 239, 227)
             pdf.set_fill_color(fill_r, fill_g, fill_b)
 
             date_str = row["date"].strftime("%d/%m/%Y") if hasattr(row["date"], "strftime") else str(row["date"])[:10]
@@ -547,17 +553,17 @@ def generate_pdf(df, selected_month, display_name):
             pdf.set_x(x0)
             # Date — Helvetica
             set_num(8)
-            pdf.set_text_color(200, 220, 235)
+            pdf.set_text_color(60, 50, 40)
             pdf.cell(COL_DATE, row_h, lat(date_str), fill=True, align="C")
             # Item — Hebrew font
             set_heb(8)
-            pdf.set_text_color(200, 220, 235)
+            pdf.set_text_color(60, 50, 40)
             pdf.cell(COL_ITEM, row_h, heb(item_str), fill=True, align="R")
             # Category — Hebrew font
             pdf.cell(COL_CAT, row_h, heb(cat_str), fill=True, align="R")
             # Amount — Helvetica, accent color
             set_num(9)
-            pdf.set_text_color(0, 201, 167)
+            pdf.set_text_color(194, 87, 12)
             pdf.cell(COL_AMT, row_h, amt_str, fill=True, align="C")
             pdf.ln()
 
@@ -565,7 +571,7 @@ def generate_pdf(df, selected_month, display_name):
     if not df.empty:
         pdf.ln(8)
         set_heb(11)
-        pdf.set_text_color(0, 201, 167)
+        pdf.set_text_color(194, 87, 12)
         pdf.set_x(x0)
         pdf.cell(0, 8, heb("סיכום לפי קטגוריה"), align="R", new_x="LMARGIN", new_y="NEXT")
         pdf.ln(2)
@@ -578,22 +584,22 @@ def generate_pdf(df, selected_month, display_name):
             pdf.set_x(x0)
             # Category name
             set_heb(9)
-            pdf.set_fill_color(26, 48, 64)
-            pdf.set_text_color(224, 240, 248)
+            pdf.set_fill_color(245, 239, 227)
+            pdf.set_text_color(38, 32, 26)
             pdf.cell(130, 7, heb(str(cat)), fill=True, align="R")
             # Amount
             set_num(9)
-            pdf.set_fill_color(22, 38, 52)
-            pdf.set_text_color(0, 201, 167)
+            pdf.set_fill_color(255, 255, 255)
+            pdf.set_text_color(194, 87, 12)
             pdf.cell(50, 7, lat(f"{amt:,.0f}"), fill=True, align="C")
             pdf.ln()
             # Progress bar
             pdf.set_x(x0)
-            pdf.set_fill_color(26, 48, 64)
+            pdf.set_fill_color(231, 223, 207)
             pdf.cell(180, 2, "", fill=True)
             if bar_w > 0:
                 pdf.set_xy(x0, pdf.get_y() - 2)
-                pdf.set_fill_color(0, 201, 167)
+                pdf.set_fill_color(194, 87, 12)
                 pdf.cell(bar_w, 2, "", fill=True)
             pdf.ln(3)
 
