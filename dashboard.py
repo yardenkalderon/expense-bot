@@ -657,7 +657,13 @@ def login_page():
                 r_pass1 = st.text_input("סיסמה חדשה", type="password", key="reset_p1")
                 r_pass2 = st.text_input("אימות סיסמה חדשה", type="password", key="reset_p2")
                 if st.button("אפס סיסמה", use_container_width=True, key="reset_btn"):
-                    if not r_code or not r_pass1 or not r_pass2:
+                    attempts = _login_attempts()
+                    rkey = f"reset:{int(r_uid)}"
+                    info = attempts.get(rkey, {"fails": 0, "locked_until": 0})
+                    if time.time() < info["locked_until"]:
+                        wait_min = int((info["locked_until"] - time.time()) / 60) + 1
+                        st.error(f"🚫 יותר מדי ניסיונות — נסה שוב בעוד כ-{wait_min} דקות")
+                    elif not r_code or not r_pass1 or not r_pass2:
                         st.error("מלא את כל השדות")
                     elif r_pass1 != r_pass2:
                         st.error("הסיסמאות אינן תואמות")
@@ -673,8 +679,17 @@ def login_page():
                                 not_expired = False
                             code_ok = not_expired and hash_pw(r_code.strip()) == row["reset_code"]
                         if not code_ok:
-                            st.error("קוד שגוי או שפג תוקפו — שלח /resetpass לבוט לקבלת קוד חדש")
+                            # ניסיון כושל — נועלים אחרי 5 ניסיונות כדי למנוע ניחוש הקוד
+                            info["fails"] += 1
+                            if info["fails"] >= LOCKOUT_ATTEMPTS:
+                                info["locked_until"] = time.time() + LOCKOUT_SECONDS
+                                info["fails"] = 0
+                                st.error("🚫 יותר מדי ניסיונות כושלים — נחסם ל-5 דקות")
+                            else:
+                                st.error("קוד שגוי או שפג תוקפו — שלח /resetpass לבוט לקבלת קוד חדש")
+                            attempts[rkey] = info
                         else:
+                            attempts.pop(rkey, None)
                             db.table("authorized_users").update({
                                 "dashboard_password": hash_pw(r_pass1),
                                 "reset_code": None,
