@@ -149,23 +149,6 @@ Required Supabase tables: `expenses`, `authorized_users`, `budgets`,
 
 ---
 
-## Known limitations
-
-Stated plainly, since this is a personal-scale system and the trade-offs were deliberate:
-
-- **Password hashing is SHA-256 without a salt.** bcrypt or argon2 is the correct choice
-  and is the next planned change.
-- **Database calls are synchronous inside async handlers**, so each query blocks the
-  event loop. Fine for the current scale, but it would not hold up under real load.
-- **No automated tests.**
-- **No schema migrations** — DDL changes were applied manually, so the schema isn't
-  reproducible from the repository.
-- **Rate-limit state lives in process memory**, so it resets on restart and wouldn't work
-  across multiple instances.
-- Some queries follow an N+1 pattern rather than batching.
-
----
-
 ## License
 
 Personal project, shared publicly as a portfolio piece.
