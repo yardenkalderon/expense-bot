@@ -26,7 +26,7 @@ DASHBOARD_URL   = os.environ.get('DASHBOARD_URL', '')
 # מודלים של Groq — ניתן להחליף דרך משתני סביבה בלי שינוי קוד
 TEXT_MODEL   = os.environ.get('GROQ_TEXT_MODEL', 'openai/gpt-oss-120b')
 VOICE_MODEL  = os.environ.get('GROQ_VOICE_MODEL', 'whisper-large-v3')
-VISION_MODEL = os.environ.get('GROQ_VISION_MODEL', 'meta-llama/llama-4-scout-17b-16e-instruct')
+VISION_MODEL = os.environ.get('GROQ_VISION_MODEL', 'qwen/qwen3.8-27b')
 
 logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s', level=logging.INFO)
 logging.getLogger('httpx').setLevel(logging.WARNING)
