@@ -17,6 +17,7 @@ import time
 SUPABASE_URL = os.environ.get('SUPABASE_URL', '')
 SUPABASE_KEY = os.environ.get('SUPABASE_KEY', '')
 GROQ_API_KEY = os.environ.get('GROQ_API_KEY', '')
+GROQ_TEXT_MODEL = os.environ.get('GROQ_TEXT_MODEL', 'openai/gpt-oss-120b')
 
 CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
 CAT_COLORS = {
@@ -1511,9 +1512,9 @@ def _groq_chat(messages: list) -> str:
     try:
         client = get_groq_client()
         resp = client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
+            model=GROQ_TEXT_MODEL,
             messages=messages,
-            max_tokens=1200,
+            max_tokens=3000,  # מודל reasoning — טוקני החשיבה נספרים במגבלה
             temperature=0.6,
         )
         return resp.choices[0].message.content.strip()

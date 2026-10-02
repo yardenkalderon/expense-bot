@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import base64
 import hashlib
@@ -21,6 +22,15 @@ ACCESS_PASSWORD = os.environ['ACCESS_PASSWORD']
 SUPABASE_URL    = os.environ['SUPABASE_URL']
 SUPABASE_KEY    = os.environ['SUPABASE_KEY']
 DASHBOARD_URL   = os.environ.get('DASHBOARD_URL', '')
+
+# מודלים של Groq — ניתן להחליף דרך משתני סביבה בלי שינוי קוד
+TEXT_MODEL   = os.environ.get('GROQ_TEXT_MODEL', 'openai/gpt-oss-120b')
+VOICE_MODEL  = os.environ.get('GROQ_VOICE_MODEL', 'whisper-large-v3')
+VISION_MODEL = os.environ.get('GROQ_VISION_MODEL', 'meta-llama/llama-4-scout-17b-16e-instruct')
+
+logging.basicConfig(format='%(asctime)s %(levelname)s %(name)s: %(message)s', level=logging.INFO)
+logging.getLogger('httpx').setLevel(logging.WARNING)
+log = logging.getLogger('expense-bot')
 
 client = Groq(api_key=GROQ_API_KEY)
 db = create_client(SUPABASE_URL, SUPABASE_KEY)
@@ -151,7 +161,7 @@ def analyze_text_with_ai(user_text):
     for attempt in range(3):
         try:
             completion = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
+                model=TEXT_MODEL,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Analyze: {user_text}"}
@@ -171,6 +181,7 @@ def analyze_text_with_ai(user_text):
             break  # JSON בעייתי — retry לא יעזור
         except Exception as e:
             last_error = e  # שגיאת API — כדאי לנסות שוב
+            log.warning("Groq text call failed (attempt %d, model %s): %s", attempt + 1, TEXT_MODEL, e)
     raise RuntimeError(f"Groq API failed after retries: {last_error}")
 
 
@@ -307,6 +318,7 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
                 parse_mode='Markdown'
             )
     except Exception as e:
+        log.exception("process_and_save failed")
         err_msg = str(e)
         if "Groq" in err_msg or "API" in err_msg or "retries" in err_msg:
             await update.message.reply_text("⚠️ שירות ה-AI לא זמין כרגע. נסה שוב בעוד כמה שניות.")
@@ -328,7 +340,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await voice_file.download_to_drive(tmp_path)
         with open(tmp_path, 'rb') as f:
             transcription = client.audio.transcriptions.create(
-                model="whisper-large-v3",
+                model=VOICE_MODEL,
                 file=f,
                 language="he"
             )
@@ -337,6 +349,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(f"🎙️ שמעתי: _{transcribed_text}_", parse_mode='Markdown')
         await process_and_save(update, context, user_id, transcribed_text)
     except Exception:
+        log.exception("handle_voice failed")
         await update.message.reply_text("אירעה שגיאה בעיבוד ההקלטה. נסה שוב.")
 
 
@@ -358,7 +371,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         os.unlink(tmp_path)
         categories_str = ", ".join(CATEGORIES)
         completion = client.chat.completions.create(
-            model="meta-llama/llama-4-scout-17b-16e-instruct",
+            model=VISION_MODEL,
             messages=[{
                 "role": "user",
                 "content": [
@@ -385,6 +398,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await update.message.reply_text("לא הצלחתי לזהות סכום בקבלה. נסה לצלם שוב בצורה ברורה יותר.")
     except Exception:
+        log.exception("handle_photo failed")
         await update.message.reply_text("אירעה שגיאה בעיבוד הקבלה. נסה שוב.")
 
 
