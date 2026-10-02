@@ -17,7 +17,7 @@ Three components running in three places, connected only through a shared databa
 flowchart TD
     U["👤 User<br/>text / voice / receipt photo"] --> TG["Telegram Bot API"]
     TG <-->|long polling| BOT["🤖 Bot — new_bot.py<br/><i>hosted on Railway, 24/7</i>"]
-    BOT -->|"transcribe / parse / vision"| GROQ["🧠 Groq API<br/>Llama 3.3 70B · Whisper · Llama 4 Scout"]
+    BOT -->|"transcribe / parse / vision"| GROQ["🧠 Groq API<br/>GPT-OSS 120B · Whisper · Qwen 3.8"]
     GROQ -->|structured JSON| BOT
     BOT -->|read / write| DB[("🗄️ Supabase<br/>PostgreSQL")]
     DASH["📊 Dashboard — dashboard.py<br/><i>hosted on Streamlit Cloud</i>"] -->|read / write| DB
@@ -76,7 +76,7 @@ sent to a vision model. Both then follow the identical parse-validate-store path
 | Component | Choice | Rationale | Trade-off |
 |---|---|---|---|
 | Interface | Telegram Bot API | No app to build or install; users already have it | Locked into Telegram's ecosystem |
-| LLM | Groq (Llama 3.3 70B, Whisper, Llama 4 Scout) | Free tier, very low latency | Dependent on free-tier rate limits |
+| LLM | Groq (GPT-OSS 120B, Whisper, Qwen 3.8 27B) | Free tier, very low latency | Dependent on free-tier rate limits; models get retired without notice, so model names are configurable via env vars |
 | Database | Supabase (PostgreSQL) | Managed Postgres, simple Python client, no server ops | Free-tier limits |
 | Bot hosting | Railway | Runs a true 24/7 worker process, deploys on git push | Free-tier credit limits |
 | Dashboard | Streamlit | Full dashboard in pure Python — no JS/React needed | Sleeps when idle; re-runs the whole script per interaction |
@@ -133,6 +133,9 @@ ACCESS_PASSWORD=...
 SUPABASE_URL=...
 SUPABASE_KEY=...
 DASHBOARD_URL=...        # optional
+GROQ_TEXT_MODEL=...      # optional, default openai/gpt-oss-120b
+GROQ_VOICE_MODEL=...     # optional, default whisper-large-v3
+GROQ_VISION_MODEL=...    # optional, default qwen/qwen3.8-27b
 ```
 
 Then:
