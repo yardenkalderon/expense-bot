@@ -1,4 +1,5 @@
 import streamlit as st
+import streamlit.components.v1 as components
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -253,14 +254,49 @@ def revoke_device_session(session_id):
     get_db().table("dashboard_sessions").delete().eq("id", session_id).execute()
 
 
-SESSION_KEYS = ["logged_in", "user", "group_initialized", "main_group_select", "device_session_id"]
+SESSION_KEYS = ["logged_in", "user", "group_initialized", "main_group_select",
+                "device_session_id", "device_token", "token_invalid"]
+
+# קיצור דרך במסך הבית בכרום פותח את "/" (ה-start_url של Streamlit Cloud) בלי ?t=,
+# לכן הטוקן נשמר גם ב-localStorage של הדפדפן דרך רכיב קטן (components/browser_storage).
+_browser_storage = components.declare_component(
+    "browser_storage",
+    path=os.path.join(os.path.dirname(os.path.abspath(__file__)), "components", "browser_storage"),
+)
+
+
+def browser_storage(action, key, token=None):
+    """action: get/set/clear. מחזיר None עד שהדפדפן עונה; ב-get מחרוזת ריקה = אין טוקן."""
+    return _browser_storage(action=action, token=token, key=key, default=None)
+
+
+def try_token_login(token, from_browser=False):
+    """מנסה להיכנס עם טוקן, פעם אחת לכל טוקן בכל סשן."""
+    if st.session_state.get("token_checked") == token:
+        return
+    st.session_state["token_checked"] = token
+    result = login_with_token(token)
+    if result:
+        user, session_id = result
+        for k in SESSION_KEYS:
+            st.session_state.pop(k, None)
+        st.session_state.pop("browser_token_cleared", None)
+        st.session_state.logged_in = True
+        st.session_state.user = user
+        st.session_state.device_session_id = session_id
+        st.session_state.device_token = token
+    elif not st.session_state.get("logged_in"):
+        st.session_state["token_invalid"] = True
+        if from_browser:
+            st.session_state["browser_token_cleared"] = True  # טוקן שמור שפג — למחוק מהדפדפן
 
 
 def logout():
     for k in SESSION_KEYS:
         st.session_state.pop(k, None)
-    # מנקה את הטוקן מהכתובת הנוכחית; קיצור הדרך השמור לא משתנה
+    # מנקה את הטוקן מהכתובת ומהדפדפן, אחרת הכניסה האוטומטית הייתה חוזרת מיד
     st.query_params.clear()
+    st.session_state["browser_token_cleared"] = True
 
 
 @st.cache_data(ttl=30)
@@ -658,7 +694,7 @@ def login_page():
                     unsafe_allow_html=True)
         st.markdown("---")
 
-        if st.session_state.pop("token_invalid", False):
+        if st.session_state.get("token_invalid"):
             st.warning("הקישור פג תוקף או בוטל — שלח /dashboard לבוט לקבלת קישור חדש")
 
         tab_login, tab_register = st.tabs(["🔑 כניסה", "📝 הרשמה"])
@@ -1735,20 +1771,19 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main():
-    # כניסה עם קישור אישי — נבדק פעם אחת לכל טוקן בכל סשן
-    token = st.query_params.get("t")
-    if token and st.session_state.get("token_checked") != token:
-        st.session_state["token_checked"] = token
-        result = login_with_token(token)
-        if result:
-            user, session_id = result
-            for k in SESSION_KEYS:
-                st.session_state.pop(k, None)
-            st.session_state.logged_in = True
-            st.session_state.user = user
-            st.session_state.device_session_id = session_id
-        elif not st.session_state.get("logged_in"):
-            st.session_state["token_invalid"] = True
+    # כניסה עם קישור אישי: מהכתובת (?t=), ואם אין — מהטוקן ששמור בדפדפן
+    url_token = st.query_params.get("t")
+    if url_token:
+        try_token_login(url_token)
+    elif not st.session_state.get("logged_in") and not st.session_state.get("browser_token_cleared"):
+        stored = browser_storage("get", key="bs_get")
+        if stored:
+            try_token_login(stored, from_browser=True)
+
+    if st.session_state.get("browser_token_cleared"):
+        browser_storage("clear", key="bs_clear")
+    elif st.session_state.get("device_token"):
+        browser_storage("set", key="bs_set", token=st.session_state["device_token"])
 
     if not st.session_state.get("logged_in"):
         apply_theme()

@@ -54,11 +54,15 @@ Tables: `expenses`, `authorized_users`, `budgets`, `recurring_expenses`, `groups
 - Personal login link ("remember this device"): the bot's `/dashboard [label]` (private chats
   only, no link preview) stores a SHA-256 hash of a random token in `dashboard_sessions` and
   replies with `DASHBOARD_URL?t=<token>`. `main()` checks `?t=` once per session through
-  `login_with_token`, which reloads the user row from `authorized_users`. The token stays in
-  the URL on purpose: a home-screen shortcut saves the URL, and Streamlit cannot set an
-  HttpOnly cookie. A link expires after 30 idle days or 180 days total. "Logout" only clears
-  the token from the current URL. "Disconnect this device" in settings and the bot's
-  `/logoutall` delete rows. Password login stays as is; automated agents use it.
+  `login_with_token`, which reloads the user row from `authorized_users`. After a token
+  login the token is also saved in the browser's `localStorage` through the small custom
+  component in `components/browser_storage/`. Chrome's home-screen shortcut opens `/`
+  (Streamlit Cloud's manifest `start_url`) without `?t=`, so `main()` reads the stored
+  token when the URL has none. Streamlit cannot set an HttpOnly cookie, and cookie
+  components fail on Community Cloud. A link expires after 30 idle days or 180 days total.
+  "Logout" clears the token from the URL and from `localStorage` but keeps the DB row.
+  "Disconnect this device" in settings and the bot's `/logoutall` delete rows. Password
+  login stays as is; automated agents use it.
 - AI insights and chat use `_groq_chat`.
 - Layout is RTL. The PDF export uses `python-bidi` and Noto Sans Hebrew, downloaded at
   runtime from GitHub into the temp dir (`get_hebrew_font_path`).
