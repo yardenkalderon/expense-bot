@@ -51,7 +51,8 @@ PLOT_CONFIG = {"displayModeBar": False}
 
 
 def show_chart(fig, key):
-    st.plotly_chart(fig, use_container_width=True, key=key, config=PLOT_CONFIG)
+    # theme=None: הצבעים שלנו בלבד, בלי התבנית של Streamlit (שמחליפה צבעים לפי מצב המערכת)
+    st.plotly_chart(fig, use_container_width=True, key=key, config=PLOT_CONFIG, theme=None)
 
 st.set_page_config(page_title="ניהול הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
 
@@ -195,7 +196,7 @@ def _common_css(c):
 <style>
 /* בלי פס הכותרת של Streamlit (הכלים שלו מוסתרים ממילא) — מחזיר את המסך העליון לתוכן */
 header[data-testid="stHeader"] {{ display: none !important; }}
-.block-container {{ padding-top: 1.2rem !important; }}
+.block-container {{ padding-top: 1.2rem !important; padding-bottom: 6rem !important; }}
 .app-title {{ color: {c['text']}; font-size: 1.45rem; font-weight: 700; line-height: 1.2; white-space: nowrap; }}
 
 /* כפתורי אייקון (מצב לילה / התנתק) — משניים, לא כמו פעולה ראשית */
@@ -246,7 +247,8 @@ li {{ text-align: right; }}
 .js-plotly-plot, .js-plotly-plot * {{ direction: ltr !important; }}
 
 @media (max-width: 768px) {{
-    .block-container {{ padding: 0.8rem 0.6rem 0.5rem !important; }}
+    /* למטה: מקום לתגים הצפים של Streamlit Cloud שמכסים את התוכן */
+    .block-container {{ padding: 0.8rem 0.6rem 6rem !important; }}
     .app-title {{ font-size: 1.15rem; }}
     h4 {{ font-size: 1rem !important; }}
     /* כותרת + כפתורים, וחודש + קבוצה — בשורה אחת ולא זה מתחת לזה */
@@ -1068,7 +1070,7 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False):
                         line=dict(color=c["bg"], width=2)),
             texttemplate="%{percent:.0%}", textposition="inside", textfont=dict(size=12, color="#FFFFFF"),
             insidetextorientation="horizontal",
-            hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} · %{percent}<extra></extra>",
         ))
         layout = plot_layout()
         layout["margin"] = dict(l=0, r=0, t=10, b=10)
@@ -1350,11 +1352,12 @@ def tab_table(df_all, user_id, selected_month, display_name):
         hide_index=True,
         column_config={
             "id": None,
-            "מחק": st.column_config.CheckboxColumn("🗑️", default=False),
-            "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True),
-            "פריט": st.column_config.TextColumn(required=True),
-            "סכום (₪)": st.column_config.NumberColumn(min_value=0, format="₪%.0f", required=True),
-            "תאריך": st.column_config.DateColumn(format="DD/MM/YYYY", required=True),
+            # רוחבים קבועים כדי שכל העמודות ייכנסו ברוחב טלפון (375px)
+            "מחק": st.column_config.CheckboxColumn("🗑️", default=False, width=40),
+            "קטגוריה": st.column_config.SelectboxColumn(options=CATEGORIES, required=True, width=95),
+            "פריט": st.column_config.TextColumn(required=True, width=88),
+            "סכום (₪)": st.column_config.NumberColumn("סכום", min_value=0, format="₪%.0f", required=True, width=65),
+            "תאריך": st.column_config.DateColumn(format="DD/MM/YY", required=True, width=72),
         },
         key="expense_editor"
     )
@@ -1580,7 +1583,7 @@ def tab_shared(groups, uid, selected_month):
         fig = px.pie(totals, values="amount", names="user_name", hole=0.55,
                      color_discrete_sequence=["#D97706", "#3E8E5A", "#4A7BA6", "#C64B77", "#8F7F6C"])
         fig.update_traces(textfont_color="#FFFFFF", textinfo="label+percent",
-                          hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
+                          hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} · %{percent}<extra></extra>",
                           marker=dict(line=dict(color=c["bg"], width=2)))
         fig.update_layout(height=260, showlegend=False, **plot_layout())
         show_chart(fig, "pie_shared")

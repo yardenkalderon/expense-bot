@@ -1,0 +1,9 @@
+# הדשבורד מנהל מצב יום/לילה בעצמו (CSS + tc()). בלי זה Streamlit עובר לתמה הכהה שלו
+# כשמערכת הטלפון במצב כהה: טבלאות שחורות, מתגים בלתי נראים, וצירי גרפים בהירים על רקע בהיר.
+[theme]
+base = "light"
+primaryColor = "#B45309"
+backgroundColor = "#F5F0E8"
+secondaryBackgroundColor = "#EDE8DC"
+textColor = "#1C1917"
+font = "sans serif"
