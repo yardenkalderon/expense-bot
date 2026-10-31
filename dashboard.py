@@ -38,12 +38,20 @@ def plot_layout():
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
         font=dict(family="Heebo", color=c["muted"]),
-        xaxis=dict(linecolor=c["border"], showgrid=False, zeroline=False),
-        yaxis=dict(gridcolor=c["border"], linecolor=c["border"], griddash="dot", zeroline=False),
+        xaxis=dict(linecolor=c["border"], showgrid=False, zeroline=False, automargin=True),
+        yaxis=dict(gridcolor=c["border"], linecolor=c["border"], griddash="dot", zeroline=False, automargin=True),
         margin=dict(l=0, r=0, t=10, b=0),
         hoverlabel=dict(bgcolor=c["bg"], bordercolor=c["border"],
                         font=dict(family="Heebo", color=c["text"])),
     )
+
+
+# סרגל הכלים של Plotly (זום, מצלמה...) מכסה את הגרפים בטלפון ולא משמש אף אחד
+PLOT_CONFIG = {"displayModeBar": False}
+
+
+def show_chart(fig, key):
+    st.plotly_chart(fig, use_container_width=True, key=key, config=PLOT_CONFIG)
 
 st.set_page_config(page_title="ניהול הוצאות", page_icon="💰", layout="wide", initial_sidebar_state="collapsed")
 
@@ -88,8 +96,8 @@ _LIGHT = """
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(255,255,255,.22); color: #FFFFFF !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
 @keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .budget-bar-fill { transform-origin: right; animation: growBar .7s ease; }
-.stTabs [data-baseweb="tab-list"] { gap: 4px; background: #EDE8DC; border-radius: 10px; padding: 4px; }
-.stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #78716C; border: none; }
+.stTabs [role="tablist"] { gap: 4px; background: #EDE8DC; border-radius: 10px; padding: 4px; }
+.stTabs [data-testid="stTab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #78716C; border: none; }
 .stTabs [aria-selected="true"] { background: #FFFFFF !important; color: #B45309 !important; border: 1px solid #D6D0C6 !important; box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important; }
 .stButton > button { background-color: #B45309 !important; color: #FFFFFF !important; border-radius: 8px; border: none !important; font-weight: 600; font-family: 'Heebo', sans-serif; }
 .stButton > button * { color: #FFFFFF !important; }
@@ -118,7 +126,7 @@ summary { color: #1C1917 !important; }
     .block-container { padding: 3.5rem 0.4rem 0.5rem !important; }
     .metric-value { font-size: 1.3rem !important; }
     .metric-card { padding: 0.8rem 0.5rem !important; }
-    .stTabs [data-baseweb="tab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
+    .stTabs [data-testid="stTab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
     h1, h2, h3 { font-size: 1.1rem !important; }
 }
 </style>
@@ -147,8 +155,8 @@ _DARK = """
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(0,0,0,.18); color: #1C1008 !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
 @keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
 .budget-bar-fill { transform-origin: right; animation: growBar .7s ease; }
-.stTabs [data-baseweb="tab-list"] { gap: 4px; background: #2C1A0E; border-radius: 10px; padding: 4px; }
-.stTabs [data-baseweb="tab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #A08060; border: none; }
+.stTabs [role="tablist"] { gap: 4px; background: #2C1A0E; border-radius: 10px; padding: 4px; }
+.stTabs [data-testid="stTab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #A08060; border: none; }
 .stTabs [aria-selected="true"] { background: #3D2010 !important; color: #F59E0B !important; border: 1px solid #5C3020 !important; box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important; }
 .stButton > button { background-color: #D97706 !important; color: #1C1008 !important; border-radius: 8px; border: none !important; font-weight: 600; font-family: 'Heebo', sans-serif; }
 .stButton > button * { color: #1C1008 !important; }
@@ -175,15 +183,100 @@ summary { color: #F5E6D3 !important; }
     .block-container { padding: 3.5rem 0.4rem 0.5rem !important; }
     .metric-value { font-size: 1.3rem !important; }
     .metric-card { padding: 0.8rem 0.5rem !important; }
-    .stTabs [data-baseweb="tab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
+    .stTabs [data-testid="stTab"] { padding: 4px 8px !important; font-size: 0.75rem !important; }
     h1, h2, h3 { font-size: 1.1rem !important; }
 }
 </style>
 """
 
+def _common_css(c):
+    """CSS משותף לשתי התמות, נבנה מצבעי tc() — פריסת טלפון, כותרת, כפתורי אייקון."""
+    return f"""
+<style>
+/* בלי פס הכותרת של Streamlit (הכלים שלו מוסתרים ממילא) — מחזיר את המסך העליון לתוכן */
+header[data-testid="stHeader"] {{ display: none !important; }}
+.block-container {{ padding-top: 1.2rem !important; }}
+.app-title {{ color: {c['text']}; font-size: 1.45rem; font-weight: 700; line-height: 1.2; white-space: nowrap; }}
+
+/* כפתורי אייקון (מצב לילה / התנתק) — משניים, לא כמו פעולה ראשית */
+.st-key-theme_btn button, .st-key-logout_btn button {{
+    background: transparent !important; border: 1px solid {c['border']} !important;
+    color: {c['text']} !important; min-height: 2.3rem; padding: 0 !important;
+}}
+.st-key-theme_btn button *, .st-key-logout_btn button * {{ color: {c['text']} !important; }}
+.st-key-theme_btn button:hover, .st-key-logout_btn button:hover {{ background: {c['bg2']} !important; }}
+
+/* פעולות משניות ברשימות (השהה/ערוך) — מסגרת במקום מילוי, כדי שהמסך לא יהיה קיר של כפתורים */
+[class*="st-key-tog_"] button, [class*="st-key-edit_rec_"] button, [class*="st-key-keep_rec_"] button {{
+    background: transparent !important; border: 1px solid {c['accent']} !important;
+}}
+[class*="st-key-tog_"] button *, [class*="st-key-edit_rec_"] button *, [class*="st-key-keep_rec_"] button * {{ color: {c['accent']} !important; }}
+[class*="st-key-tog_"] button:hover, [class*="st-key-edit_rec_"] button:hover, [class*="st-key-keep_rec_"] button:hover {{ background: {c['bg2']} !important; }}
+
+/* פעולה הרסנית — מסגרת אדומה במקום מילוי */
+[class*="st-key-del_rec_"] button, .st-key-delete_expenses button {{
+    background: transparent !important; border: 1px solid {c['danger']} !important;
+}}
+[class*="st-key-del_rec_"] button *, .st-key-delete_expenses button * {{ color: {c['danger']} !important; }}
+[class*="st-key-del_rec_"] button:hover, .st-key-delete_expenses button:hover {{ background: {c['bg2']} !important; }}
+
+/* ערך שנבחר בתיבות בחירה — בצבע הטקסט ולא בצבע המושתק (היה כמעט בלתי קריא בלילה) */
+[data-testid="stSelectbox"] input {{ color: {c['text']} !important; -webkit-text-fill-color: {c['text']} !important; }}
+[data-testid="stSelectbox"] [role="group"] {{ background: {c['bg']} !important; border-color: {c['border']} !important; }}
+[data-testid="stSelectbox"] svg {{ fill: {c['muted']} !important; color: {c['muted']} !important; }}
+
+/* טקסט בתוך כרטיסים עם מסגרת (ניתוח AI, צ'אט) */
+[data-testid="stVerticalBlockBorderWrapper"] p, [data-testid="stVerticalBlockBorderWrapper"] li {{
+    color: {c['text']}; line-height: 1.75;
+}}
+li {{ text-align: right; }}
+
+.metric-card:not(.hero) {{ min-height: 104px; display: flex; flex-direction: column; justify-content: center; }}
+
+/* קונטיינרים בלי תוכן נראה (בלוקי <style>, רכיב ה-localStorage) — בלי הרווח שלהם בראש העמוד */
+[data-testid="stElementContainer"]:has(style) {{ display: none !important; }}
+.st-key-bs_get, .st-key-bs_set, .st-key-bs_clear {{
+    position: absolute !important; width: 1px !important; height: 1px !important;
+    overflow: hidden !important; opacity: 0; pointer-events: none;
+}}
+.stTabs [data-testid="stTab"] {{ cursor: pointer; }}
+/* סרגל הכלים של הטבלה צף מעליה — שלא יכסה את מה שמעליה */
+[data-testid="stElementContainer"]:has([data-testid="stDataFrame"]) {{ margin-top: 1.8rem; }}
+/* ה-RTL הגלובלי הופך את עיגון הטקסט ב-SVG של Plotly ומעיף תוויות צירים מחוץ לגרף */
+.js-plotly-plot, .js-plotly-plot * {{ direction: ltr !important; }}
+
+@media (max-width: 768px) {{
+    .block-container {{ padding: 0.8rem 0.6rem 0.5rem !important; }}
+    .app-title {{ font-size: 1.15rem; }}
+    h4 {{ font-size: 1rem !important; }}
+    /* כותרת + כפתורים, וחודש + קבוצה — בשורה אחת ולא זה מתחת לזה */
+    .st-key-topbar [data-testid="stHorizontalBlock"], .st-key-filters [data-testid="stHorizontalBlock"] {{
+        flex-wrap: nowrap !important; gap: 6px !important;
+    }}
+    .st-key-topbar [data-testid="stColumn"], .st-key-filters [data-testid="stColumn"] {{ min-width: 0 !important; }}
+    .st-key-topbar [data-testid="stColumn"]:first-child {{ flex: 1 1 auto !important; }}
+    .st-key-topbar [data-testid="stColumn"]:not(:first-child) {{ flex: 0 0 2.6rem !important; }}
+    /* כרטיסי מדדים: הגיבור ברוחב מלא, שלושת הקטנים בשורה אחת */
+    .st-key-kpis [data-testid="stHorizontalBlock"] {{ flex-wrap: wrap !important; gap: 6px !important; }}
+    .st-key-kpis [data-testid="stColumn"] {{ min-width: 0 !important; flex: 1 1 calc(33% - 6px) !important; }}
+    .st-key-kpis [data-testid="stColumn"]:first-child {{ flex: 1 1 100% !important; }}
+    .st-key-kpis .metric-card.hero {{ margin-bottom: 0.2rem; }}
+    .st-key-kpis .metric-card:not(.hero) {{ min-height: 86px; padding: 0.6rem 0.3rem !important; }}
+    .st-key-kpis .metric-card:not(.hero) .metric-value {{ font-size: 1rem !important; line-height: 1.25; }}
+    .st-key-kpis .metric-card:not(.hero) .metric-label {{ font-size: 0.72rem; }}
+    /* כל 8 הלשוניות גלויות — שתי שורות במקום גלילה אופקית */
+    .stTabs [role="tablist"] {{ flex-wrap: wrap !important; row-gap: 4px; }}
+    [data-testid^="stTabsScroll"] {{ display: none !important; }}
+    .stTabs [data-testid="stTab"] {{ flex: 1 1 22%; justify-content: center; }}
+}}
+</style>
+"""
+
+
 def apply_theme():
     dark = st.session_state.get("dark_mode", False)
     st.markdown(_DARK if dark else _LIGHT, unsafe_allow_html=True)
+    st.markdown(_common_css(tc()), unsafe_allow_html=True)
 
 def tc():
     """מחזיר dict עם צבעי התמה הנוכחית לשימוש ב-inline styles."""
@@ -192,12 +285,12 @@ def tc():
         return dict(
             bg="#2C1A0E", bg2="#3D2010", border="#3D2010",
             accent="#D97706", accent2="#4ADE80", danger="#F87171",
-            text="#F5E6D3", muted="#A08060"
+            text="#F5E6D3", muted="#C4A584", prev_bar="#7A5A3E"
         )
     return dict(
         bg="#FFFFFF", bg2="#EDE8DC", border="#D6D0C6",
         accent="#B45309", accent2="#15803D", danger="#DC2626",
-        text="#1C1917", muted="#78716C"
+        text="#1C1917", muted="#78716C", prev_bar="#E3CDB0"
     )
 
 
@@ -515,7 +608,8 @@ def generate_pdf(df, selected_month, display_name):
 
     font_path = get_hebrew_font_path()
     has_heb = font_path is not None
-    month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
+    month_label = ("כל החודשים" if selected_month == "הכל"
+                   else datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y"))
 
     pdf = FPDF()
     pdf.set_auto_page_break(auto=False)
@@ -686,13 +780,17 @@ def generate_pdf(df, selected_month, display_name):
 
 # ── AUTH ──────────────────────────────────────────────────────────────────────
 
+# ה-PDF נבנה בכל טעינה (כל הלשוניות רצות), כולל הורדת גופן — לכן במטמון לפי הנתונים
+@st.cache_data(show_spinner=False, max_entries=20)
+def generate_pdf_cached(df, selected_month, display_name):
+    return bytes(generate_pdf(df, selected_month, display_name))
+
+
 def login_page():
     col1, col2, col3 = st.columns([1, 1.4, 1])
     with col2:
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.markdown("<h2 style='color:#1C1917;text-align:center'>💰 ניהול הוצאות</h2>",
+        st.markdown(f"<div class='app-title' style='text-align:center;margin:1.5rem 0 1rem'>💰 ניהול הוצאות</div>",
                     unsafe_allow_html=True)
-        st.markdown("---")
 
         if st.session_state.get("token_invalid"):
             st.warning("הקישור פג תוקף או בוטל — שלח /dashboard לבוט לקבלת קישור חדש")
@@ -701,8 +799,8 @@ def login_page():
 
         # ── כניסה ──────────────────────────────────────────────────────────────
         with tab_login:
-            username = st.text_input("שם משתמש", placeholder="שם משתמש", key="login_user")
-            password = st.text_input("סיסמה", type="password", placeholder="סיסמה", key="login_pass")
+            username = st.text_input("שם משתמש", key="login_user")
+            password = st.text_input("סיסמה", type="password", key="login_pass")
             if st.button("כניסה", use_container_width=True, key="login_btn"):
                 attempts = _login_attempts()
                 info = attempts.get(username, {"fails": 0, "locked_until": 0})
@@ -731,7 +829,7 @@ def login_page():
             # ── שחזור סיסמה ──
             st.markdown("<br>", unsafe_allow_html=True)
             with st.expander("🔓 שכחתי סיסמה"):
-                st.markdown("<span style='color:#78716C;font-size:0.85rem'>שלח /resetpass לבוט בטלגרם לקבלת קוד אימות</span>",
+                st.markdown("<span style='font-size:0.85rem'>שלח /resetpass לבוט בטלגרם לקבלת קוד אימות</span>",
                             unsafe_allow_html=True)
                 r_uid = st.number_input("Telegram user_id שלך", min_value=1, step=1, key="reset_uid")
                 r_code = st.text_input("קוד אימות מהבוט", max_chars=6, key="reset_code")
@@ -780,7 +878,7 @@ def login_page():
 
         # ── הרשמה ──────────────────────────────────────────────────────────────
         with tab_register:
-            st.markdown("<span style='color:#78716C;font-size:0.85rem'>לקבלת המזהה שלך — שלח /myid לבוט</span>",
+            st.markdown("<span style='font-size:0.85rem'>לקבלת המזהה שלך — שלח /myid לבוט</span>",
                         unsafe_allow_html=True)
             r_telegram_id = st.number_input("Telegram user_id", min_value=1, step=1, key="reg_uid")
             r_display     = st.text_input("שם תצוגה (עברית)", placeholder="למשל: יארדן", key="reg_name")
@@ -846,10 +944,24 @@ def prev_month_str(month_str: str) -> str:
     return (d.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
 
 
+def same_period(df_prev, selected_month):
+    """בחודש הנוכחי משווים רק לאותם ימים בחודש הקודם (1 עד היום), אחרת ב-1 בחודש
+    יום אחד מושווה לחודש שלם ויוצאת "ירידה של 90%". מחזיר (df, האם_חלקי)."""
+    now = datetime.now(TZ)
+    if df_prev.empty or selected_month != now.strftime("%Y-%m"):
+        return df_prev, False
+    return df_prev[df_prev["date"].dt.day <= now.day], True
+
+
+def vs_prev_label(partial):
+    return "מאותה תקופה בחודש שעבר" if partial else "מהחודש שעבר"
+
+
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
-def _overview_insight(df, df_prev, budgets, selected_month, total):
-    """מחזיר (אימוג'י, טקסט) — תובנה חכמה אחת, או None. בלי AI, מיידי."""
+def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False):
+    """מחזיר (אימוג'י, טקסט) — תובנה חכמה אחת, או None. בלי AI, מיידי.
+    df_prev כבר חתוך לאותה תקופה (same_period) כשהחודש הנוכחי חלקי."""
     total_budget = sum(budgets.values()) if budgets else 0
 
     # 1) קצב מול תקציב — רק בחודש הנוכחי, כשיש חריגה צפויה
@@ -868,7 +980,8 @@ def _overview_insight(df, df_prev, budgets, selected_month, total):
             return "⚠️", f"בקצב הנוכחי צפוי לחרוג מהתקציב ב-₪{pace - total_budget:,.0f} עד סוף החודש"
 
     # 2) הקטגוריה עם השינוי הגדול ביותר מול חודש קודם
-    if not df_prev.empty:
+    #    (בתחילת חודש יש מעט מדי ימים — כל הוצאה בודדת נראית כמו קפיצה)
+    if not df_prev.empty and days_elapsed >= 5:
         curr = df.groupby("category")["amount"].sum()
         prev = df_prev.groupby("category")["amount"].sum()
         diffs = [(cat, (curr[cat] - prev.get(cat, 0)) / prev[cat] * 100)
@@ -877,8 +990,8 @@ def _overview_insight(df, df_prev, budgets, selected_month, total):
             cat, pct = max(diffs, key=lambda x: abs(x[1]))
             if abs(pct) >= 15:
                 if pct > 0:
-                    return "📈", f"ההוצאות על {cat} עלו ב-{pct:.0f}% מהחודש שעבר"
-                return "📉", f"יפה! ההוצאות על {cat} ירדו ב-{abs(pct):.0f}% מהחודש שעבר"
+                    return "📈", f"ההוצאות על {cat} עלו ב-{pct:.0f}% {vs_prev_label(partial)}"
+                return "📉", f"יפה! ההוצאות על {cat} ירדו ב-{abs(pct):.0f}% {vs_prev_label(partial)}"
 
     # 3) קצב טוב מול תקציב (חיובי)
     if total_budget > 0 and is_current and days_elapsed >= 3:
@@ -893,7 +1006,7 @@ def _overview_insight(df, df_prev, budgets, selected_month, total):
     return "💡", f"{top_cat} היא ההוצאה הגדולה שלך החודש — {share:.0f}% מסך ההוצאות"
 
 
-def tab_overview(df, df_prev, budgets, selected_month=None):
+def tab_overview(df, df_prev, budgets, selected_month=None, partial=False):
     if df.empty:
         st.info("אין הוצאות רשומות לחודש זה.")
         return
@@ -905,17 +1018,18 @@ def tab_overview(df, df_prev, budgets, selected_month=None):
     total_budget = sum(budgets.values()) if budgets else 0
     budget_pct = (total / total_budget * 100) if total_budget > 0 else None
 
-    # שינוי מול חודש קודם — לכרטיס הגיבור
+    # שינוי מול חודש קודם (באותה תקופה) — לכרטיס הגיבור
     chip = None
-    if not df_prev.empty:
+    # ביום-יומיים הראשונים של החודש כל הוצאה בודדת משנה את האחוז בעשרות — לא מציגים
+    if not df_prev.empty and not (partial and datetime.now(TZ).day < 3):
         prev_total = df_prev["amount"].sum()
         if prev_total > 0:
             change = (total - prev_total) / prev_total * 100
             arrow = "↑" if change >= 0 else "↓"
-            chip = f"{arrow} {abs(change):.0f}% מחודש שעבר"
+            chip = f"{arrow} {abs(change):.0f}% {vs_prev_label(partial)}"
 
     # באנר תובנה חכמה — משפט אחד מחושב, בלי AI
-    insight = _overview_insight(df, df_prev, budgets, selected_month, total)
+    insight = _overview_insight(df, df_prev, budgets, selected_month, total, partial)
     if insight:
         c = tc()
         emoji, text = insight
@@ -929,57 +1043,78 @@ def tab_overview(df, df_prev, budgets, selected_month=None):
             <span style="color:{c['text']};font-size:0.95rem;font-weight:500;text-align:right">{text}</span>
         </div>""", unsafe_allow_html=True)
 
-    c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
-    with c1: card("סה\"כ החודש", f"₪{total:,.0f}", "hero", chip=chip)
-    with c2: card("ממוצע יומי", f"₪{daily_avg:,.0f}", "purple")
-    with c3: card("קטגוריה מובילה", top_cat, "red")
-    with c4:
-        if budget_pct is not None:
-            card("% מהתקציב", f"{budget_pct:.0f}%", "red" if budget_pct > 90 else "green")
-        else:
-            card("תקציב", "לא הוגדר")
+    # בטלפון: כרטיס הגיבור ברוחב מלא ושלושת הקטנים בשורה אחת (CSS ב-st-key-kpis)
+    with st.container(key="kpis"):
+        c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
+        with c1: card("סה\"כ החודש", f"₪{total:,.0f}", "hero", chip=chip)
+        with c2: card("ממוצע יומי", f"₪{daily_avg:,.0f}", "purple")
+        with c3: card("קטגוריה מובילה", top_cat, "red")
+        with c4:
+            if budget_pct is not None:
+                card("מהתקציב", f"{budget_pct:.0f}%", "red" if budget_pct > 90 else "green")
+            else:
+                card("תקציב", "לא הוגדר")
 
     st.markdown("---")
     col1, col2 = st.columns(2)
+    c = tc()
 
     with col1:
         st.markdown("### הוצאות לפי קטגוריה")
-        with st.container():
-            cat_df = df.groupby("category")["amount"].sum().reset_index()
-            colors = [CAT_COLORS.get(c, "#A69B8D") for c in cat_df["category"]]
-            fig = px.pie(cat_df, values="amount", names="category",
-                         color_discrete_sequence=colors, hole=0.62)
-            fig.update_traces(textinfo="percent", textposition="inside", textfont_size=12,
-                              textfont_color="#FFFFFF",
-                              hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
-                              marker=dict(line=dict(color=tc()["bg"], width=2)))
-            fig.update_layout(showlegend=False, height=340, **plot_layout())
-            fig.add_annotation(text=f"<b>₪{cat_df['amount'].sum():,.0f}</b>",
-                               x=0.5, y=0.5, xref="paper", yref="paper", showarrow=False,
-                               font=dict(size=20, family="Heebo", color=tc()["text"]))
-            st.plotly_chart(fig, use_container_width=True, key="pie_overview")
+        cat_df = df.groupby("category")["amount"].sum().sort_values(ascending=False).reset_index()
+        fig = go.Figure(go.Pie(
+            labels=cat_df["category"], values=cat_df["amount"], hole=0.62, sort=False,
+            marker=dict(colors=[CAT_COLORS.get(x, "#A69B8D") for x in cat_df["category"]],
+                        line=dict(color=c["bg"], width=2)),
+            texttemplate="%{percent:.0%}", textposition="inside", textfont=dict(size=12, color="#FFFFFF"),
+            insidetextorientation="horizontal",
+            hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
+        ))
+        layout = plot_layout()
+        layout["margin"] = dict(l=0, r=0, t=10, b=10)
+        fig.update_layout(height=380, showlegend=True,
+                          legend=dict(orientation="h", y=-0.05, x=0.5, xanchor="center", yanchor="top",
+                                      font=dict(family="Heebo", size=12, color=c["text"])),
+                          **layout)
+        fig.add_annotation(text=f"<b>₪{total:,.0f}</b>", x=0.5, y=0.5, xref="paper", yref="paper",
+                           showarrow=False, font=dict(size=20, family="Heebo", color=c["text"]))
+        show_chart(fig, "pie_overview")
 
     with col2:
         st.markdown("### השוואה לחודש קודם")
-        with st.container():
-            if not df_prev.empty:
-                curr = df.groupby("category")["amount"].sum()
-                prev = df_prev.groupby("category")["amount"].sum()
-                cmp = pd.DataFrame({"החודש": curr, "חודש קודם": prev}).fillna(0).reset_index()
-                c = tc()
-                fig2 = go.Figure([
-                    go.Bar(name="החודש", x=cmp["category"], y=cmp["החודש"], marker_color=c["accent"],
-                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra>החודש</extra>"),
-                    go.Bar(name="חודש קודם", x=cmp["category"], y=cmp["חודש קודם"], marker_color=c["bg2"],
-                           marker_line_color=c["accent"], marker_line_width=1,
-                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra>חודש קודם</extra>"),
-                ])
-                fig2.update_layout(barmode="group", xaxis_tickangle=-25, barcornerradius=6,
-                                   legend=dict(orientation="h", font=dict(family="Heebo", color=c["muted"])),
-                                   height=340, **plot_layout())
-                st.plotly_chart(fig2, use_container_width=True, key="bar_compare")
-            else:
-                st.info("אין נתוני חודש קודם להשוואה")
+        if df_prev.empty:
+            st.info("אין נתוני חודש קודם להשוואה")
+        else:
+            curr = df.groupby("category")["amount"].sum()
+            prev = df_prev.groupby("category")["amount"].sum()
+            cmp = pd.DataFrame({"curr": curr, "prev": prev}).fillna(0)
+            cmp = cmp.sort_values("curr", ascending=True)   # הגדולה למעלה בגרף אופקי
+            prev_name = "אותה תקופה בחודש קודם" if partial else "חודש קודם"
+            # עמודות אופקיות — שמות הקטגוריות קריאים גם בטלפון
+            fig2 = go.Figure([
+                go.Bar(name=prev_name, y=cmp.index, x=cmp["prev"], orientation="h",
+                       marker=dict(color=c["prev_bar"]),
+                       hovertemplate="<b>%{y}</b><br>₪%{x:,.0f}<extra>" + prev_name + "</extra>"),
+                go.Bar(name="החודש", y=cmp.index, x=cmp["curr"], orientation="h",
+                       marker=dict(color=c["accent"]),
+                       hovertemplate="<b>%{y}</b><br>₪%{x:,.0f}<extra>החודש</extra>"),
+            ])
+            layout = plot_layout()
+            # רוחב קבוע לשמות הקטגוריות: automargin מודד 0 כשהגרף נוצר בלשונית מוסתרת
+            layout["margin"] = dict(l=10, r=100, t=10, b=80, autoexpand=False)
+            # עברית: שמות הקטגוריות מימין והעמודות גדלות שמאלה
+            layout["xaxis"] = dict(layout["yaxis"], tickprefix="₪", tickformat=",.0f", side="bottom",
+                                   autorange="reversed")
+            layout["yaxis"] = dict(showgrid=False, linecolor=c["border"], ticks="", side="right",
+                                   automargin=False, ticklabelstandoff=6,
+                                   tickfont=dict(family="Heebo", size=12, color=c["text"]))
+            fig2.update_layout(barmode="group", barcornerradius=4, bargap=0.25,
+                               height=max(280, 46 * len(cmp) + 110),
+                               legend=dict(orientation="h", y=-0.12, x=1, xanchor="right", yanchor="top",
+                                           traceorder="reversed",
+                                           font=dict(family="Heebo", size=12, color=c["muted"])),
+                               **layout)
+            show_chart(fig2, "bar_compare")
 
 
 def tab_trends(df_all):
@@ -987,63 +1122,70 @@ def tab_trends(df_all):
         st.info("אין נתונים")
         return
 
+    c = tc()
     st.markdown("### הוצאות לאורך זמן")
-    gran = st.radio("תצוגה:", ["יומי", "שבועי", "חודשי"], horizontal=True, key="gran_radio")
+    gran = st.radio("תצוגה:", ["יומי", "שבועי", "חודשי"], index=1, horizontal=True, key="gran_radio")
 
-    df2 = df_all.copy()
+    # מקבצים לפי תאריך אמיתי (לא לפי מחרוזת) — אחרת 01/10 ממוין לפני 02/09
+    day = df_all["date"].dt.normalize()
     if gran == "יומי":
-        df2["period"] = df2["date"].dt.strftime("%d/%m/%Y")
+        period = day
     elif gran == "שבועי":
-        df2["period"] = df2["date"].dt.to_period("W").apply(
-            lambda x: x.start_time.strftime("%d/%m/%Y"))
+        period = day - pd.to_timedelta((day.dt.weekday + 1) % 7, unit="D")   # שבוע מתחיל ביום ראשון
     else:
-        df2["period"] = df2["date"].dt.strftime("%m/%Y")
+        period = day.dt.to_period("M").dt.to_timestamp()
+    pts = df_all.groupby(period)["amount"].sum().reset_index().sort_values("date")
+    hover_fmt = {"יומי": "%d/%m/%Y", "שבועי": "שבוע מ-%d/%m", "חודשי": "%m/%Y"}[gran]
 
-    pts = df2.groupby("period")["amount"].sum().reset_index()
-
-    with st.container():
-        c = tc()
-        fig = px.line(pts, x="period", y="amount", markers=True,
-                      color_discrete_sequence=[c["accent"]],
-                      labels={"period": "תאריך", "amount": "סכום (₪)"})
-        fig.update_traces(line_width=2.5, line_shape="spline", marker_size=7,
-                          fill="tozeroy", fillcolor="rgba(217,119,6,0.10)",
-                          hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>")
-        fig.update_layout(
-            xaxis_title="תאריך", yaxis_title="סכום (₪)",
-            xaxis_tickangle=-30,
-            yaxis_tickformat=",.0f",
-            height=320, **plot_layout()
-        )
-        st.plotly_chart(fig, use_container_width=True, key="line_trends")
+    fig = go.Figure(go.Scatter(
+        x=pts["date"], y=pts["amount"], mode="lines+markers",
+        line=dict(color=c["accent"], width=2.5), marker=dict(size=6),
+        fill="tozeroy", fillcolor="rgba(217,119,6,0.10)",
+        hovertemplate="<b>%{x|" + hover_fmt + "}</b><br>₪%{y:,.0f}<extra></extra>",
+    ))
+    layout = plot_layout()
+    layout["margin"] = dict(l=56, r=10, t=10, b=30)
+    layout["xaxis"] = dict(layout["xaxis"], tickformat="%m/%Y" if gran == "חודשי" else "%d/%m", nticks=6)
+    layout["yaxis"] = dict(layout["yaxis"], tickprefix="₪", tickformat=",.0f", rangemode="tozero")
+    fig.update_layout(height=320, **layout)
+    show_chart(fig, "line_trends")
 
     st.markdown("### השוואה חודשית")
     df3 = df_all.copy()
     df3["month_key"] = df3["date"].dt.strftime("%Y-%m")
-    monthly = df3.groupby("month_key")["amount"].sum().reset_index().tail(6)
+    monthly = df3.groupby("month_key")["amount"].sum().reset_index().sort_values("month_key").tail(6)
+    current_key = datetime.now(TZ).strftime("%Y-%m")
     monthly["label"] = monthly["month_key"].apply(
-        lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y"))
+        lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y") + ("<br>עד היום" if x == current_key else ""))
+    colors = [c["prev_bar"] if k == current_key else c["accent"] for k in monthly["month_key"]]
 
-    with st.container():
-        c = tc()
-        fig2 = px.bar(monthly, x="label", y="amount", text="amount",
-                      color_discrete_sequence=[c["accent"]],
-                      labels={"label": "חודש", "amount": "סכום (₪)"})
-        fig2.update_traces(texttemplate="₪%{text:,.0f}", textposition="outside",
-                           textfont=dict(family="Heebo", color=c["muted"]),
-                           hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>")
-        fig2.update_layout(xaxis_title="חודש", yaxis_title="סכום (₪)", barcornerradius=6,
-                           yaxis_tickformat=",.0f", height=300, **plot_layout())
-        st.plotly_chart(fig2, use_container_width=True, key="bar_monthly")
+    fig2 = go.Figure(go.Bar(
+        x=monthly["label"], y=monthly["amount"], marker=dict(color=colors, line=dict(color=c["accent"], width=1)),
+        text=[f"₪{v:,.0f}" for v in monthly["amount"]], textposition="outside", cliponaxis=False,
+        textfont=dict(family="Heebo", color=c["text"]),
+        hovertemplate="<b>%{x}</b><br>₪%{y:,.0f}<extra></extra>",
+    ))
+    layout = plot_layout()
+    layout["margin"] = dict(l=56, r=10, t=30, b=30)
+    layout["yaxis"] = dict(layout["yaxis"], tickprefix="₪", tickformat=",.0f",
+                           range=[0, monthly["amount"].max() * 1.18])
+    layout["xaxis"] = dict(layout["xaxis"], type="category")
+    fig2.update_layout(barcornerradius=6, height=300, **layout)
+    show_chart(fig2, "bar_monthly")
 
 
 def tab_recurring(user_id):
     st.markdown("### 🔄 הוצאות חוזרות")
-    st.markdown("<span style='color:#78716C;font-size:0.85rem'>הוצאות שחוזרות כל חודש — הבוט ישאל לאישור ביום שהגדרת</span>",
+    st.markdown("<span style='font-size:0.85rem'>הוצאות שחוזרות כל חודש — הבוט ישאל לאישור ביום שהגדרת</span>",
                 unsafe_allow_html=True)
     st.markdown("---")
 
     rows = fetch_recurring(user_id)
+    active_total = sum(r["amount"] for r in rows if r["active"]) if rows else 0
+    if active_total:
+        c = tc()
+        st.markdown(f"<div style='color:{c['muted']};margin-bottom:0.4rem'>סה\"כ בחודש: "
+                    f"<b style='color:{c['accent']}'>₪{active_total:,.0f}</b></div>", unsafe_allow_html=True)
 
     # שמירה על 3 כפתורי הפעולה בשורה אחת גם במובייל (מונע קיפול אנכי)
     st.markdown("""
@@ -1077,37 +1219,51 @@ def tab_recurring(user_id):
                         if st.form_submit_button("❌ ביטול", use_container_width=True):
                             st.session_state.pop("editing_rec", None)
                             st.rerun()
-                st.markdown("<hr style='margin:0.6rem 0;border:none;border-top:1px solid #E7E0D6'>",
+                st.markdown("<hr style='margin:0.6rem 0'>",
                             unsafe_allow_html=True)
                 continue
 
             active = row["active"]
-            name_style = "color:#1C1917" if active else "color:#78716C;text-decoration:line-through"
+            c = tc()
+            name_style = f"color:{c['text']}" if active else f"color:{c['muted']};text-decoration:line-through"
+            paused = "" if active else f" <span style='color:{c['muted']};font-size:0.8rem'>(מושהה)</span>"
             st.markdown(
                 f"<div style='text-align:right;line-height:1.55'>"
                 f"<span style='{name_style};font-weight:700;font-size:1.05rem'>{html.escape(str(row['item']))}</span>"
-                f"<span style='color:#B45309;font-weight:700'> · ₪{row['amount']:,.0f}</span><br>"
-                f"<span style='color:#78716C;font-size:0.85rem'>{row['category']} · יום {row['day_of_month']} בחודש</span>"
+                f"<span style='color:{c['accent']};font-weight:700'> · ₪{row['amount']:,.0f}</span>{paused}<br>"
+                f"<span style='color:{c['muted']};font-size:0.85rem'>{row['category']} · יום {row['day_of_month']} בחודש</span>"
                 f"</div>",
                 unsafe_allow_html=True,
             )
             with st.container(key=f"recbtns_{row['id']}"):
-                b1, b2, b3 = st.columns(3)
-                with b1:
-                    toggle_label = "⏸" if active else "▶️"
-                    if st.button(toggle_label, key=f"tog_{row['id']}", use_container_width=True,
-                                 help="השהה" if active else "הפעל"):
-                        toggle_recurring(row["id"], not active)
-                        st.rerun()
-                with b2:
-                    if st.button("✏️", key=f"edit_rec_{row['id']}", use_container_width=True, help="ערוך"):
-                        st.session_state["editing_rec"] = row["id"]
-                        st.rerun()
-                with b3:
-                    if st.button("🗑️", key=f"del_rec_{row['id']}", use_container_width=True, help="מחק"):
-                        delete_recurring(row["id"])
-                        st.rerun()
-            st.markdown("<hr style='margin:0.6rem 0;border:none;border-top:1px solid #E7E0D6'>",
+                if st.session_state.get("confirm_del_rec") == row["id"]:
+                    # מחיקה בשני שלבים — אין "בטל" אחרי מחיקה
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        if st.button("🗑️ כן, למחוק", key=f"del_rec_{row['id']}", use_container_width=True):
+                            delete_recurring(row["id"])
+                            st.session_state.pop("confirm_del_rec", None)
+                            st.rerun()
+                    with b2:
+                        if st.button("ביטול", key=f"keep_rec_{row['id']}", use_container_width=True):
+                            st.session_state.pop("confirm_del_rec", None)
+                            st.rerun()
+                else:
+                    b1, b2, b3 = st.columns(3)
+                    with b1:
+                        if st.button("⏸ השהה" if active else "▶️ הפעל", key=f"tog_{row['id']}",
+                                     use_container_width=True):
+                            toggle_recurring(row["id"], not active)
+                            st.rerun()
+                    with b2:
+                        if st.button("✏️ ערוך", key=f"edit_rec_{row['id']}", use_container_width=True):
+                            st.session_state["editing_rec"] = row["id"]
+                            st.rerun()
+                    with b3:
+                        if st.button("🗑️ מחק", key=f"del_rec_{row['id']}", use_container_width=True):
+                            st.session_state["confirm_del_rec"] = row["id"]
+                            st.rerun()
+            st.markdown(f"<hr style='margin:0.6rem 0;border:none;border-top:1px solid {c['border']}'>",
                         unsafe_allow_html=True)
     else:
         st.info("אין הוצאות חוזרות. הוסף את הראשונה 👇")
@@ -1160,41 +1316,22 @@ def tab_table(df_all, user_id, selected_month, display_name):
         st.info("אין נתונים")
         return
 
-    col1, col2 = st.columns(2)
-    months = ["הכל"] + sorted(df_all["date"].dt.strftime("%Y-%m").unique(), reverse=True)
-    # ברירת מחדל: החודש שנבחר בראש הדשבורד (אפשר עדיין לבחור "הכל")
-    default_idx = months.index(selected_month) if selected_month in months else 0
+    # החודש נבחר בראש הדשבורד; כאן רק קטגוריה ואפשרות להציג את כל החודשים
+    col1, col2 = st.columns([2, 1], vertical_alignment="bottom")
     with col1:
-        sel_month = st.selectbox("חודש", months, index=default_idx,
-                                  format_func=lambda x: x if x == "הכל" else
-                                  datetime.strptime(x, "%Y-%m").strftime("%m/%Y"),
-                                  key=f"table_month_{selected_month}")
-    with col2:
         sel_cat = st.selectbox("קטגוריה", ["הכל"] + CATEGORIES, key="table_cat")
+    with col2:
+        all_months = st.toggle("כל החודשים", key="table_all_months")
 
     df_f = df_all.copy().sort_values("date", ascending=False)
-    if sel_month != "הכל":
-        df_f = df_f[df_f["date"].dt.strftime("%Y-%m") == sel_month]
+    if not all_months:
+        df_f = df_f[df_f["date"].dt.strftime("%Y-%m") == selected_month]
     if sel_cat != "הכל":
         df_f = df_f[df_f["category"] == sel_cat]
 
     if df_f.empty:
         st.info("אין תוצאות")
         return
-
-    # ── ייצוא PDF ──
-    try:
-        pdf_bytes = generate_pdf(df_f, selected_month, display_name)
-        month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m-%Y")
-        st.download_button(
-            label="📄 ייצוא לPDF",
-            data=pdf_bytes,
-            file_name=f"expenses_{month_label}.pdf",
-            mime="application/pdf",
-            key="pdf_download"
-        )
-    except Exception as e:
-        st.warning(f"לא ניתן ליצור PDF: {e}")
 
     # Build editable dataframe (keep id for saving)
     edit_df = df_f[["id", "category", "item", "amount", "date"]].copy()
@@ -1222,7 +1359,11 @@ def tab_table(df_all, user_id, selected_month, display_name):
         key="expense_editor"
     )
 
-    col_save, col_del, col_info = st.columns([1, 1, 2])
+    c = tc()
+    st.markdown(f"<span style='color:{c['muted']}'>סה\"כ: <b style='color:{c['accent']}'>₪{df_f['amount'].sum():,.0f}</b>"
+                f" · {len(df_f)} הוצאות</span>", unsafe_allow_html=True)
+
+    col_save, col_del, col_pdf = st.columns(3)
     with col_save:
         if st.button("💾 שמור שינויים", key="save_expenses"):
             changed = 0
@@ -1254,39 +1395,32 @@ def tab_table(df_all, user_id, selected_month, display_name):
             fetch_expenses.clear()
             st.success(f"נמחקו {len(to_delete)} הוצאות!")
             st.rerun()
-    with col_info:
-        st.markdown(f"<span style='color:#78716C'>סה\"כ: <b style='color:#B45309'>₪{df_f['amount'].sum():,.0f}</b> | {len(df_f)} הוצאות</span>",
-                    unsafe_allow_html=True)
+    with col_pdf:
+        try:
+            label = "all" if all_months else datetime.strptime(selected_month, "%Y-%m").strftime("%m-%Y")
+            st.download_button(
+                label="📄 ייצוא ל-PDF",
+                data=generate_pdf_cached(df_f, "הכל" if all_months else selected_month, display_name),
+                file_name=f"expenses_{label}.pdf",
+                mime="application/pdf",
+                key="pdf_download",
+            )
+        except Exception as e:
+            st.warning(f"לא ניתן ליצור PDF: {e}")
 
 
 def tab_budget(df, selected_month, user_id, group_id=0):
-    st.markdown("### תקציב חודשי")
-
     # Load from DB if not in session
     bkey = f"budget_{selected_month}_{group_id}"
     if bkey not in st.session_state:
         st.session_state[bkey] = fetch_budget(user_id, selected_month, group_id)
-
     budgets = st.session_state[bkey]
+    active = {cat: budgets[cat] for cat in CATEGORIES if budgets.get(cat, 0) > 0}
 
-    st.markdown("#### הגדרת תקציב")
-    cols = st.columns(3)
-    new_budgets = {}
-    for i, cat in enumerate(CATEGORIES):
-        with cols[i % 3]:
-            val = st.number_input(cat, min_value=0, step=50,
-                                   value=int(budgets.get(cat, 0)),
-                                   key=f"b_{cat}_{selected_month}_{group_id}")
-            new_budgets[cat] = val
-
-    if st.button("שמור תקציב", key=f"save_budget_{selected_month}_{group_id}"):
-        save_budget_to_db(user_id, selected_month, new_budgets, group_id)
-        st.session_state[bkey] = new_budgets
-        budgets = new_budgets
-        st.success("התקציב נשמר!")
-
-    # אין תקציב לחודש זה? הצע להעתיק מהחודש הקודם
-    if not any(v > 0 for v in budgets.values()):
+    # ── התקדמות — מה שבודקים כל יום, ולכן למעלה ──
+    st.markdown("### התקדמות מול התקציב")
+    if not active:
+        st.info("עוד לא הוגדר תקציב לחודש הזה.")
         prev_month = prev_month_str(selected_month)
         prev_budgets = fetch_budget(user_id, prev_month, group_id)
         if any(v > 0 for v in prev_budgets.values()):
@@ -1298,92 +1432,109 @@ def tab_budget(df, selected_month, user_id, group_id=0):
                 # נקה את ערכי ה-widgets כדי שיתאתחלו מהתקציב המועתק
                 for cat in CATEGORIES:
                     st.session_state.pop(f"b_{cat}_{selected_month}_{group_id}", None)
-                st.success(f"התקציב מחודש {prev_label} הועתק!")
+                st.toast(f"התקציב מחודש {prev_label} הועתק")
                 st.rerun()
+    else:
+        cat_totals = df.groupby("category")["amount"].sum() if not df.empty else pd.Series(dtype=float)
+        c = tc()
+        dark = st.session_state.get("dark_mode", False)
+        track = c["bg2"]
 
-    st.markdown("---")
-    st.markdown("#### התקדמות vs תקציב")
+        def bar_color(p):
+            if dark:
+                return "#F07862" if p > 0.9 else "#E0A93B" if p > 0.7 else "#5FBF87"
+            return "#CF4A38" if p > 0.9 else "#DB8A0C" if p > 0.7 else "#3B8C5E"
 
-    active = {c: v for c, v in budgets.items() if v > 0}
-    if not active:
-        st.info("הגדר תקציב בשדות למעלה ולחץ 'שמור'")
-        return
-
-    cat_totals = df.groupby("category")["amount"].sum() if not df.empty else pd.Series(dtype=float)
-    c = tc()
-    dark = st.session_state.get("dark_mode", False)
-    track = c["bg2"]
-
-    def bar_color(p):
-        if dark:
-            return "#F07862" if p > 0.9 else "#E0A93B" if p > 0.7 else "#5FBF87"
-        return "#CF4A38" if p > 0.9 else "#DB8A0C" if p > 0.7 else "#3B8C5E"
-
-    # טבעת כוללת — כמה מהתקציב הכולל נוצל
-    total_budget = sum(active.values())
-    total_spent = float(sum(cat_totals.get(cat, 0) for cat in active))
-    overall = total_spent / total_budget if total_budget else 0
-    ring_pct = min(overall, 1.0) * 100
-    ring_color = bar_color(overall)
-    st.markdown(f"""
-    <div style="display:flex;align-items:center;gap:22px;justify-content:center;flex-wrap:wrap;margin:6px 0 18px">
-      <div style="width:150px;height:150px;border-radius:50%;flex-shrink:0;
-           background:conic-gradient({ring_color} 0 {ring_pct}%, {track} {ring_pct}% 100%);
-           display:grid;place-items:center">
-        <div style="width:114px;height:114px;border-radius:50%;background:{c['bg']};display:grid;place-items:center;text-align:center">
-          <div>
-            <div style="color:{c['text']};font-size:1.7rem;font-weight:700;line-height:1">{overall*100:.0f}%</div>
-            <div style="color:{c['muted']};font-size:0.72rem">מהתקציב</div>
+        # טבעת כוללת — כמה מהתקציב הכולל נוצל
+        total_budget = sum(active.values())
+        total_spent = float(sum(cat_totals.get(cat, 0) for cat in active))
+        overall = total_spent / total_budget if total_budget else 0
+        ring_pct = min(overall, 1.0) * 100
+        ring_color = bar_color(overall)
+        st.markdown(f"""
+        <div style="display:flex;align-items:center;gap:22px;justify-content:center;flex-wrap:wrap;margin:6px 0 18px">
+          <div style="width:150px;height:150px;border-radius:50%;flex-shrink:0;
+               background:conic-gradient({ring_color} 0 {ring_pct}%, {track} {ring_pct}% 100%);
+               display:grid;place-items:center">
+            <div style="width:114px;height:114px;border-radius:50%;background:{c['bg']};display:grid;place-items:center;text-align:center">
+              <div>
+                <div style="color:{c['text']};font-size:1.7rem;font-weight:700;line-height:1">{overall*100:.0f}%</div>
+                <div style="color:{c['muted']};font-size:0.72rem">מהתקציב</div>
+              </div>
+            </div>
           </div>
-        </div>
-      </div>
-      <div style="text-align:center">
-        <div style="color:{c['muted']};font-size:0.8rem">הוצאת</div>
-        <div style="color:{c['text']};font-size:1.35rem;font-weight:700">₪{total_spent:,.0f}</div>
-        <div style="color:{c['muted']};font-size:0.8rem">מתוך ₪{total_budget:,.0f}</div>
-      </div>
-    </div>""", unsafe_allow_html=True)
+          <div style="text-align:center">
+            <div style="color:{c['muted']};font-size:0.8rem">הוצאת</div>
+            <div style="color:{c['text']};font-size:1.35rem;font-weight:700">₪{total_spent:,.0f}</div>
+            <div style="color:{c['muted']};font-size:0.8rem">מתוך ₪{total_budget:,.0f}</div>
+          </div>
+        </div>""", unsafe_allow_html=True)
 
-    # פסים דקים ומעוגלים לכל קטגוריה
-    rows = ""
-    for cat, budget in active.items():
-        spent = float(cat_totals.get(cat, 0))
-        pct = spent / budget if budget else 0
-        color = bar_color(pct)
-        rows += f"""
-        <div style="margin:12px 0">
-          <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:5px">
-            <span style="color:{c['text']};font-weight:500">{cat}</span>
-            <span style="color:{c['muted']}">₪{spent:,.0f} / ₪{budget:,.0f}</span>
-          </div>
-          <div style="height:9px;background:{track};border-radius:999px;overflow:hidden">
-            <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color};border-radius:999px"></div>
-          </div>
-        </div>"""
-    st.markdown(rows, unsafe_allow_html=True)
+        # פסים דקים ומעוגלים לכל קטגוריה, בסדר הקבוע של הקטגוריות
+        rows = ""
+        for cat, budget in active.items():
+            spent = float(cat_totals.get(cat, 0))
+            pct = spent / budget if budget else 0
+            color = bar_color(pct)
+            left = budget - spent
+            note = f"נשארו ₪{left:,.0f}" if left >= 0 else f"חריגה של ₪{-left:,.0f}"
+            rows += f"""
+            <div style="margin:12px 0">
+              <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:5px;gap:8px">
+                <span style="color:{c['text']};font-weight:500">{cat}</span>
+                <span style="color:{c['muted']}">₪{spent:,.0f} מתוך ₪{budget:,.0f} · {note}</span>
+              </div>
+              <div style="height:9px;background:{track};border-radius:999px;overflow:hidden">
+                <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color};border-radius:999px"></div>
+              </div>
+            </div>"""
+        st.markdown(rows, unsafe_allow_html=True)
+
+    # ── עריכה — פעם בחודש, ולכן מקופל ──
+    with st.expander("✏️ עריכת התקציב", expanded=not active):
+        cols = st.columns(3)
+        new_budgets = {}
+        for i, cat in enumerate(CATEGORIES):
+            with cols[i % 3]:
+                new_budgets[cat] = st.number_input(cat, min_value=0, step=50,
+                                                   value=int(budgets.get(cat, 0)),
+                                                   key=f"b_{cat}_{selected_month}_{group_id}")
+        if st.button("💾 שמור תקציב", key=f"save_budget_{selected_month}_{group_id}"):
+            save_budget_to_db(user_id, selected_month, new_budgets, group_id)
+            st.session_state[bkey] = new_budgets
+            st.toast("התקציב נשמר")
+            st.rerun()
 
 
 def tab_shared(groups, uid, selected_month):
     st.markdown("### הוצאות משותפות")
 
     if not groups:
-        st.info("אין לך קבוצות. צור קבוצה בטאב ⚙️ הגדרות")
+        st.info("אין לך קבוצות. צור קבוצה בלשונית ⚙️ הגדרות")
         return
 
     group_options = {g["id"]: g["name"] for g in groups}
-    selected_gid  = st.selectbox(
-        "בחר קבוצה",
-        list(group_options.keys()),
-        format_func=lambda x: group_options[x],
-        key="shared_group_select"
-    )
+    if len(group_options) > 1:
+        selected_gid = st.selectbox("בחר קבוצה", list(group_options.keys()),
+                                    format_func=lambda x: group_options[x], key="shared_group_select")
+    else:
+        selected_gid = next(iter(group_options))
 
-    member_ids = fetch_group_members(selected_gid)
+    member_ids = [int(m) for m in fetch_group_members(selected_gid)]
     users      = fetch_users()
     user_map   = {u["user_id"]: u.get("username") or u.get("dashboard_username", str(u["user_id"])) for u in users}
+    c = tc()
+
+    # ── member list banner ──
+    member_names = [user_map.get(m, str(m)) for m in member_ids]
+    st.markdown(
+        f"<div style='background:{c['bg2']};border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem;border:1px solid {c['border']}'>"
+        f"<span style='color:{c['muted']}'>{html.escape(group_options[selected_gid])} · </span>"
+        f"<span style='color:{c['text']};font-weight:600'>{html.escape(' · '.join(member_names))}</span>"
+        f"</div>",
+        unsafe_allow_html=True)
 
     df = fetch_shared_expenses(selected_gid, selected_month)
-
     if df.empty:
         st.info("אין הוצאות משותפות לחודש זה.\nכשתרשום הוצאה בבוט, בחר 'שייך לקבוצה'.")
         return
@@ -1391,66 +1542,51 @@ def tab_shared(groups, uid, selected_month):
     df["user_name"] = df["user_id"].map(user_map).fillna(df["user_id"].astype(str))
     totals = df.groupby("user_name")["amount"].sum().reset_index()
     grand  = totals["amount"].sum()
-    totals["אחוז"] = (totals["amount"] / grand * 100).round(1)
-
-    member_ids = [int(m) for m in member_ids]   # normalise types
+    totals["אחוז"] = (totals["amount"] / grand * 100).round(0)
     settlements = calculate_settlement(df, member_ids, user_map)
     per_person  = grand / len(member_ids) if member_ids else grand
 
-    # ── member list banner ──
-    member_names = [user_map.get(m, str(m)) for m in member_ids]
-    st.markdown(
-        f"<div style='background:{tc()['bg2']};border-radius:8px;padding:0.5rem 1rem;margin-bottom:0.8rem;border:1px solid {tc()['border']}'>"
-        f"<span style='color:{tc()['muted']}'>חברי הקבוצה ({len(member_ids)}): </span>"
-        f"<span style='color:{tc()['text']};font-weight:600'>{html.escape(' · '.join(member_names))}</span>"
-        f"</div>",
-        unsafe_allow_html=True)
-
+    # ── השורה התחתונה קודם: מי חייב למי ──
     if len(member_ids) < 2:
-        st.warning("⚠️ הקבוצה צריכה לפחות 2 חברים לחישוב פשרה — הוסף חברים בטאב ⚙️ הגדרות")
+        st.warning("⚠️ הקבוצה צריכה לפחות 2 חברים לחישוב פשרה — הוסף חברים בלשונית ⚙️ הגדרות")
+    elif settlements:
+        for debtor, creditor, amount in settlements:
+            st.markdown(
+                f"<div style='background:{c['bg']};border-radius:12px;padding:0.9rem 1.1rem;margin:4px 0 10px;"
+                f"border:1px solid {c['border']};border-right:4px solid {c['accent']}'>"
+                f"<div style='color:{c['muted']};font-size:0.8rem'>💸 העברה כדי להתחשבן</div>"
+                f"<div style='color:{c['text']};font-size:1.15rem;font-weight:700;margin-top:2px'>"
+                f"{html.escape(str(debtor))} ← {html.escape(str(creditor))}: "
+                f"<span style='color:{c['accent']}'>₪{amount:,.0f}</span></div>"
+                f"</div>",
+                unsafe_allow_html=True)
+    else:
+        st.success("✅ הכל מחולק שווה — אין חובות")
 
     col1, col2 = st.columns(2)
     with col1:
-        with st.container():
-            fig = px.pie(totals, values="amount", names="user_name", hole=0.55,
-                         color_discrete_sequence=["#D97706", "#3E8E5A", "#4A7BA6", "#C64B77", "#8F7F6C"])
-            fig.update_traces(textfont_color="#FFFFFF",
-                              hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
-                              marker=dict(line=dict(color=tc()["bg"], width=2)))
-            fig.update_layout(height=300, **plot_layout())
-            st.plotly_chart(fig, use_container_width=True, key="pie_shared")
-
-    with col2:
         st.markdown("#### מי שילם כמה")
-        for _, row in totals.iterrows():
+        for _, row in totals.sort_values("amount", ascending=False).iterrows():
             st.markdown(
-                f"<span style='color:#1C1917;font-weight:600'>{html.escape(str(row['user_name']))}:</span> "
-                f"<span style='color:#B45309;font-weight:700'>₪{row['amount']:,.0f}</span> "
-                f"<span style='color:#78716C'>({row['אחוז']}%)</span>",
+                f"<span style='color:{c['text']};font-weight:600'>{html.escape(str(row['user_name']))}:</span> "
+                f"<span style='color:{c['accent']};font-weight:700'>₪{row['amount']:,.0f}</span> "
+                f"<span style='color:{c['muted']}'>({row['אחוז']:.0f}%)</span>",
                 unsafe_allow_html=True)
         st.markdown(
-            f"<span style='color:#78716C'>סה\"כ: <b style='color:#B45309'>₪{grand:,.0f}</b></span>"
-            f"<span style='color:#78716C'> | לאחד: <b style='color:#15803D'>₪{per_person:,.0f}</b></span>",
+            f"<span style='color:{c['muted']}'>סה\"כ: <b style='color:{c['text']}'>₪{grand:,.0f}</b>"
+            f" · חלק של כל אחד: <b style='color:{c['text']}'>₪{per_person:,.0f}</b></span>",
             unsafe_allow_html=True)
-
-        st.markdown("---")
-        st.markdown("#### 💸 חישוב פשרה")
-        if settlements:
-            for debtor, creditor, amount in settlements:
-                st.markdown(
-                    f"<div style='background:{tc()['bg']};border-radius:8px;padding:0.6rem 1rem;"
-                    f"margin:4px 0;border:1px solid {tc()['border']};border-right:3px solid {tc()['danger']}'>"
-                    f"<span style='color:{tc()['text']};font-weight:600'>{html.escape(str(debtor))}</span>"
-                    f"<span style='color:{tc()['muted']}'> חייב ל</span>"
-                    f"<span style='color:{tc()['text']};font-weight:600'>{html.escape(str(creditor))}</span>"
-                    f"<span style='color:{tc()['accent2']};font-weight:700'> ₪{amount:,.0f}</span>"
-                    f"</div>",
-                    unsafe_allow_html=True)
-        elif len(member_ids) >= 2:
-            st.success("✅ הכל מחולק שווה!")
+    with col2:
+        fig = px.pie(totals, values="amount", names="user_name", hole=0.55,
+                     color_discrete_sequence=["#D97706", "#3E8E5A", "#4A7BA6", "#C64B77", "#8F7F6C"])
+        fig.update_traces(textfont_color="#FFFFFF", textinfo="label+percent",
+                          hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} (%{percent})<extra></extra>",
+                          marker=dict(line=dict(color=c["bg"], width=2)))
+        fig.update_layout(height=260, showlegend=False, **plot_layout())
+        show_chart(fig, "pie_shared")
 
     st.markdown("---")
-    st.markdown("### פירוט לפי משתמש")
+    st.markdown("#### פירוט לפי משתמש")
     for uname, udf in df.groupby("user_name"):
         with st.expander(f"📋 {uname} — ₪{udf['amount'].sum():,.0f}"):
             d = udf[["category", "item", "amount", "date"]].copy().sort_values("date", ascending=False)
@@ -1484,7 +1620,7 @@ def tab_settings():
 
     # ── המכשיר הזה — רק כשנכנסו עם קישור אישי ──
     if st.session_state.get("device_session_id"):
-        st.markdown("<span style='color:#78716C;font-size:0.85rem'>נכנסת עם קישור אישי מהבוט. "
+        st.markdown("<span style='font-size:0.85rem'>נכנסת עם קישור אישי מהבוט. "
                     "ניתוק המכשיר מבטל את הקישור, וכדי להיכנס שוב צריך לשלוח /dashboard לבוט.</span>",
                     unsafe_allow_html=True)
         if st.button("🔌 נתק את המכשיר הזה", key="revoke_device"):
@@ -1598,7 +1734,26 @@ def get_groq_client():
     return Groq(api_key=GROQ_API_KEY)
 
 
+class AIError(Exception):
+    """שגיאת AI עם הודעה ידידותית בעברית למשתמש."""
+
+
+def _ai_error_message(e: Exception) -> str:
+    text = str(e).lower()
+    status = getattr(e, "status_code", None)
+    if status == 404 or "model_not_found" in text or "does not exist" in text:
+        return "מודל ה-AI לא זמין כרגע (כנראה הוחלף אצל Groq). צריך לעדכן את GROQ_TEXT_MODEL."
+    if status == 401 or "invalid api key" in text:
+        return "מפתח ה-AI לא תקין. צריך לבדוק את GROQ_API_KEY."
+    if status == 429 or "rate limit" in text:
+        return "הגענו למכסת השימוש ב-AI. נסה שוב בעוד כמה דקות."
+    if "connection" in text or "timeout" in text:
+        return "אין חיבור לשירות ה-AI כרגע. נסה שוב בעוד רגע."
+    return "ה-AI לא הצליח לענות כרגע. נסה שוב בעוד רגע."
+
+
 def _groq_chat(messages: list) -> str:
+    """מחזיר את תשובת המודל, או זורק AIError עם הודעה בעברית (השגיאה המלאה נכתבת ללוג)."""
     try:
         client = get_groq_client()
         resp = client.chat.completions.create(
@@ -1607,12 +1762,16 @@ def _groq_chat(messages: list) -> str:
             max_tokens=3000,  # מודל reasoning — טוקני החשיבה נספרים במגבלה
             temperature=0.6,
         )
-        return resp.choices[0].message.content.strip()
+        answer = (resp.choices[0].message.content or "").strip()
     except Exception as e:
-        return f"שגיאה בחיבור ל-AI: {e}"
+        print(f"Groq error ({GROQ_TEXT_MODEL}): {e!r}", flush=True)
+        raise AIError(_ai_error_message(e)) from e
+    if not answer:
+        raise AIError("ה-AI החזיר תשובה ריקה. נסה שוב.")
+    return answer
 
 
-def _build_context(df, df_prev, budgets, month_label: str) -> str:
+def _build_context(df, df_prev, budgets, month_label: str, partial=False) -> str:
     lines = [f"נתוני הוצאות לחודש {month_label}:"]
     if df.empty:
         lines.append("אין הוצאות רשומות לחודש זה.")
@@ -1633,7 +1792,8 @@ def _build_context(df, df_prev, budgets, month_label: str) -> str:
             prev_total = df_prev["amount"].sum()
             change = (total - prev_total) / prev_total * 100
             direction = "עלייה" if change > 0 else "ירידה"
-            lines.append(f"\nהשוואה לחודש קודם: ₪{prev_total:,.0f} → ₪{total:,.0f} ({direction} של {abs(change):.0f}%)")
+            period = "לאותה תקופה בחודש קודם (החודש עדיין לא הסתיים)" if partial else "לחודש קודם"
+            lines.append(f"\nהשוואה {period}: ₪{prev_total:,.0f} → ₪{total:,.0f} ({direction} של {abs(change):.0f}%)")
             for cat in CATEGORIES:
                 c = df.groupby("category")["amount"].sum().get(cat, 0)
                 p = df_prev.groupby("category")["amount"].sum().get(cat, 0)
@@ -1664,77 +1824,61 @@ _SYSTEM_PROMPT = (
 )
 
 
-def tab_insights(df, df_prev, budgets, selected_month, display_name):
+def tab_insights(df, df_prev, budgets, selected_month, display_name, partial=False):
     if not GROQ_API_KEY:
         st.warning("⚠️ GROQ_API_KEY לא מוגדר. הוסף אותו ב-Streamlit Secrets.")
         return
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
-    context = _build_context(df, df_prev, budgets, month_label)
+    context = _build_context(df, df_prev, budgets, month_label, partial)
     insight_key = f"insight_{selected_month}"
     chat_key    = f"chat_{selected_month}"
     if chat_key not in st.session_state:
         st.session_state[chat_key] = []
 
-    # ── חלק א: ניתוח אוטומטי ──────────────────────────────────────────────────
-    st.markdown("### 📊 ניתוח חודשי אוטומטי")
+    # ── חלק א: ניתוח חודשי — רק בלחיצה ───────────────────────────────────────
+    # Streamlit מריץ את כל הלשוניות בכל טעינה, ולכן ניתוח אוטומטי היה שולח
+    # בקשה ל-Groq בכל כניסה לדשבורד, גם בלי לפתוח את הלשונית.
+    st.markdown("### 📊 ניתוח חודשי")
 
-    col_refresh, col_spacer = st.columns([1, 4])
-    with col_refresh:
-        if st.button("🔄 רענן ניתוח", key="refresh_insight"):
-            st.session_state.pop(insight_key, None)
-
-    if insight_key not in st.session_state:
-        with st.spinner("מנתח את ההוצאות שלך..."):
-            prompt = (
-                f"להלן נתוני ההוצאות של {display_name} לחודש {month_label}:\n\n"
-                f"{context}\n\n"
-                "בצע ניתוח מקיף הכולל:\n"
-                "1. סיכום קצר של החודש\n"
-                "2. השוואה לחודש קודם (אם יש נתונים)\n"
-                "3. זיהוי 2-3 דפוסי הוצאה מעניינים\n"
-                "4. 3 המלצות מעשיות לחיסכון\n\n"
-                "כתוב בצורה ברורה עם כותרות ואמוג'ים."
-            )
-            result = _groq_chat([
-                {"role": "system",  "content": _SYSTEM_PROMPT},
-                {"role": "user",    "content": prompt},
-            ])
-            st.session_state[insight_key] = result
-
-    # Display insight in styled card
-    insight_text = st.session_state.get(insight_key, "")
-    if insight_text:
-        st.markdown(
-            f"""<div style='background:{tc()['bg']};border-radius:12px;padding:1.4rem 1.6rem;
-            border:1px solid {tc()['border']};border-right:4px solid {tc()['accent']};direction:rtl;
-            line-height:1.8;color:{tc()['text']};font-family:Heebo,sans-serif;
-            white-space:pre-wrap;text-align:right;box-shadow:0 1px 4px rgba(0,0,0,0.08)'>{html.escape(insight_text)}</div>""",
-            unsafe_allow_html=True
+    has_insight = insight_key in st.session_state
+    if st.button("🔄 נתח מחדש" if has_insight else "✨ נתח את החודש", key="run_insight"):
+        prompt = (
+            f"להלן נתוני ההוצאות של {display_name} לחודש {month_label}:\n\n"
+            f"{context}\n\n"
+            "בצע ניתוח מקיף הכולל:\n"
+            "1. סיכום קצר של החודש\n"
+            "2. השוואה לחודש קודם (אם יש נתונים)\n"
+            "3. זיהוי 2-3 דפוסי הוצאה מעניינים\n"
+            "4. 3 המלצות מעשיות לחיסכון\n\n"
+            "כתוב בצורה ברורה עם כותרות Markdown קצרות ואמוג'ים."
         )
+        with st.spinner("מנתח את ההוצאות שלך..."):
+            try:
+                st.session_state[insight_key] = _groq_chat([
+                    {"role": "system", "content": _SYSTEM_PROMPT},
+                    {"role": "user",   "content": prompt},
+                ])
+            except AIError as e:
+                st.error(str(e))
+
+    if insight_key in st.session_state:
+        with st.container(border=True):
+            st.markdown(st.session_state[insight_key])
+    else:
+        st.caption("הניתוח נוצר עם AI לפי נתוני החודש הנבחר.")
 
     st.markdown("---")
 
     # ── חלק ב: שאלות חופשיות ──────────────────────────────────────────────────
     st.markdown("### 💬 שאל את ה-AI על ההוצאות שלך")
 
-    # Chat history
     for msg in st.session_state[chat_key]:
         if msg["role"] == "user":
-            st.markdown(
-                f"<div style='background:{tc()['bg2']};border-radius:10px;padding:0.7rem 1rem;"
-                f"margin:6px 0;direction:rtl;text-align:right;color:{tc()['text']};font-family:Heebo,sans-serif'>"
-                f"🙋 {html.escape(msg['content'])}</div>",
-                unsafe_allow_html=True
-            )
+            st.markdown(f"**🙋 {msg['content']}**")
         else:
-            st.markdown(
-                f"<div style='background:{tc()['bg']};border-radius:10px;padding:0.7rem 1rem;"
-                f"margin:6px 0;border:1px solid {tc()['border']};border-right:3px solid {tc()['accent']};direction:rtl;"
-                f"text-align:right;color:{tc()['text']};font-family:Heebo,sans-serif;white-space:pre-wrap'>"
-                f"🤖 {html.escape(msg['content'])}</div>",
-                unsafe_allow_html=True
-            )
+            with st.container(border=True):
+                st.markdown(msg["content"])
 
     # Input
     with st.form("chat_form", clear_on_submit=True):
@@ -1743,9 +1887,11 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
                                label_visibility="collapsed")
         col_ask, col_clear, _ = st.columns([1, 1, 3])
         with col_ask:
-            submitted = st.form_submit_button("שאל 🤖")
-        with col_clear:
-            cleared = st.form_submit_button("נקה שיחה")
+            submitted = st.form_submit_button("🤖 שאל")
+        cleared = False
+        if st.session_state[chat_key]:
+            with col_clear:
+                cleared = st.form_submit_button("נקה שיחה")
 
     if cleared:
         st.session_state[chat_key] = []
@@ -1761,7 +1907,11 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
         messages.append({"role": "user", "content": user_q.strip()})
 
         with st.spinner("חושב..."):
-            answer = _groq_chat(messages)
+            try:
+                answer = _groq_chat(messages)
+            except AIError as e:
+                st.error(str(e))   # לא נשמר בהיסטוריה — שלא יישלח שוב למודל כ"תשובה"
+                return
 
         st.session_state[chat_key].append({"role": "user",      "content": user_q.strip()})
         st.session_state[chat_key].append({"role": "assistant", "content": answer})
@@ -1814,30 +1964,41 @@ def main():
             if match:
                 st.session_state["main_group_select"] = match
 
-    # שורה 1: כותרת + מצב לילה + התנתק
-    col_title, col_dark, col_logout = st.columns([4, 0.7, 1])
-    with col_dark:
-        dark = st.session_state.get("dark_mode", False)
-        if st.button("☀️" if dark else "🌙", use_container_width=True, help="החלף מצב יום/לילה"):
-            st.session_state["dark_mode"] = not dark
-            st.rerun()
-    with col_logout:
-        if st.button("התנתק", use_container_width=True):
-            logout()
-            st.rerun()
+    # שורה 1: כותרת + מצב לילה + התנתק — שורה אחת גם בטלפון (CSS ב-st-key-topbar)
+    with st.container(key="topbar"):
+        col_title, col_dark, col_logout = st.columns([6, 1, 1], vertical_alignment="center")
+        with col_title:
+            st.markdown(f"<div class='app-title'>💰 ניהול הוצאות</div>", unsafe_allow_html=True)
+        with col_dark:
+            dark = st.session_state.get("dark_mode", False)
+            if st.button("☀️" if dark else "🌙", key="theme_btn", use_container_width=True,
+                         help="מצב יום" if dark else "מצב לילה"):
+                st.session_state["dark_mode"] = not dark
+                st.rerun()
+        with col_logout:
+            if st.button("⏻", key="logout_btn", use_container_width=True, help="התנתק"):
+                logout()
+                st.rerun()
 
-    # שורה 2: סינון חודש + קבוצה
-    col_month, col_group = st.columns([1, 1])
-    with col_month:
-        selected_month = st.selectbox(
-            "חודש", month_options,
-            format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y"),
-            label_visibility="collapsed"
-        )
-    with col_group:
-        selected_group_name = st.selectbox("קבוצה", group_options,
-                                           key="main_group_select",
-                                           label_visibility="collapsed")
+    # שורה 2: סינון חודש (+ קבוצה, רק אם יש קבוצות) — זה לצד זה גם בטלפון
+    with st.container(key="filters"):
+        if groups:
+            col_month, col_group = st.columns(2)
+        else:
+            col_month, col_group = st.container(), None
+        with col_month:
+            selected_month = st.selectbox(
+                "חודש", month_options,
+                format_func=lambda x: datetime.strptime(x, "%Y-%m").strftime("%m/%Y"),
+                label_visibility="collapsed"
+            )
+        if col_group is not None:
+            with col_group:
+                selected_group_name = st.selectbox("קבוצה", group_options,
+                                                   key="main_group_select",
+                                                   label_visibility="collapsed")
+        else:
+            selected_group_name = "אני בלבד"
 
     # Determine which user_ids and group_id to use
     if selected_group_name == "אני בלבד":
@@ -1858,23 +2019,18 @@ def main():
         st.session_state[bkey] = fetch_budget(uid, selected_month, active_group_id)
     budgets = st.session_state[bkey]
 
-    month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
-    with col_title:
-        c = tc()
-        title_color = c["text"]
-        st.markdown(f"<h2 style='color:{title_color};margin:0;text-align:right'>💰 ניהול הוצאות — {month_label}</h2>",
-                    unsafe_allow_html=True)
+    df_prev_cmp, partial = same_period(df_prev, selected_month)
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
-        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🔄 חוזרות", "🎯 תקציב", "👥 משותף", "🤖 Insights", "⚙️ הגדרות"])
+        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🔄 חוזרות", "🎯 תקציב", "👥 משותף", "🤖 תובנות", "⚙️ הגדרות"])
 
-    with t1: tab_overview(df, df_prev, budgets, selected_month)
+    with t1: tab_overview(df, df_prev_cmp, budgets, selected_month, partial)
     with t2: tab_trends(df_all)
     with t3: tab_table(df_all, uid, selected_month, display_name)
     with t4: tab_recurring(uid)
     with t5: tab_budget(df, selected_month, uid, active_group_id)
     with t6: tab_shared(groups, uid, selected_month)
-    with t7: tab_insights(df, df_prev, budgets, selected_month, display_name)
+    with t7: tab_insights(df, df_prev_cmp, budgets, selected_month, display_name, partial)
     with t8: tab_settings()
 
 

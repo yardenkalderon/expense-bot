@@ -63,7 +63,17 @@ Tables: `expenses`, `authorized_users`, `budgets`, `recurring_expenses`, `groups
   "Logout" clears the token from the URL and from `localStorage` but keeps the DB row.
   "Disconnect this device" in settings and the bot's `/logoutall` delete rows. Password
   login stays as is; automated agents use it.
-- AI insights and chat use `_groq_chat`.
+- AI insights and chat use `_groq_chat`, which raises `AIError` with a Hebrew message and
+  prints the raw error to the log. The monthly analysis runs only on a button click:
+  Streamlit runs every tab's code on each load, so anything automatic in a tab runs on
+  every visit.
+- Styling: the CSS shared by both themes is in `_common_css(tc())`. Streamlit 1.66 changed
+  the DOM. Tabs are `[role="tablist"]` / `[data-testid="stTab"]` (not `data-baseweb`), and
+  a selectbox is a react-aria combobox `input`. Plotly charts need `direction: ltr` (the
+  global RTL breaks axis labels) and fixed margins, because `automargin` measures 0 for
+  charts in hidden tabs. Render charts through `show_chart`, which hides the modebar.
+- "Compared to last month" uses `same_period`: in the current month it compares only to
+  the same days of the previous month.
 - Layout is RTL. The PDF export uses `python-bidi` and Noto Sans Hebrew, downloaded at
   runtime from GitHub into the temp dir (`get_hebrew_font_path`).
 
