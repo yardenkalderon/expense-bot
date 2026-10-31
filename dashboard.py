@@ -221,6 +221,47 @@ def _login_attempts():
 LOCKOUT_ATTEMPTS = 5
 LOCKOUT_SECONDS = 300  # 5 דקות
 
+# ── קישור כניסה אישי ("זכור את המכשיר") ──────────────────────────────────────
+# הבוט (/dashboard) יוצר טוקן ושומר את ה-hash שלו ב-dashboard_sessions.
+# הטוקן נשאר בכתובת (?t=...) כדי שקיצור דרך במסך הבית ימשיך לעבוד.
+TOKEN_IDLE_DAYS = 30  # קישור שלא נעשה בו שימוש 30 יום פג
+
+
+def login_with_token(token: str):
+    """מחזיר (user, session_id) לטוקן תקף, אחרת None. מוחק טוקן שפג."""
+    db = get_db()
+    res = db.table("dashboard_sessions").select("id,user_id,last_used_at,expires_at") \
+        .eq("token_hash", hash_pw(token)).execute()
+    row = res.data[0] if res.data else None
+    if not row:
+        return None
+    now = datetime.now(TZ)
+    idle_limit = now - timedelta(days=TOKEN_IDLE_DAYS)
+    if (datetime.fromisoformat(row["expires_at"]) < now
+            or datetime.fromisoformat(row["last_used_at"]) < idle_limit):
+        db.table("dashboard_sessions").delete().eq("id", row["id"]).execute()
+        return None
+    # המשתמש נטען מחדש מה-DB (ולא נשמר בטוקן) — כך הסרת משתמש או הרשאת אדמין חלה מיד
+    ures = db.table("authorized_users").select("*").eq("user_id", row["user_id"]).execute()
+    if not ures.data:
+        return None
+    db.table("dashboard_sessions").update({"last_used_at": now.isoformat()}).eq("id", row["id"]).execute()
+    return ures.data[0], row["id"]
+
+
+def revoke_device_session(session_id):
+    get_db().table("dashboard_sessions").delete().eq("id", session_id).execute()
+
+
+SESSION_KEYS = ["logged_in", "user", "group_initialized", "main_group_select", "device_session_id"]
+
+
+def logout():
+    for k in SESSION_KEYS:
+        st.session_state.pop(k, None)
+    # מנקה את הטוקן מהכתובת הנוכחית; קיצור הדרך השמור לא משתנה
+    st.query_params.clear()
+
 
 @st.cache_data(ttl=30)
 def fetch_expenses(user_id=None, month=None, all_users=False, user_ids=None):
@@ -616,6 +657,9 @@ def login_page():
         st.markdown("<h2 style='color:#1C1917;text-align:center'>💰 ניהול הוצאות</h2>",
                     unsafe_allow_html=True)
         st.markdown("---")
+
+        if st.session_state.pop("token_invalid", False):
+            st.warning("הקישור פג תוקף או בוטל — שלח /dashboard לבוט לקבלת קישור חדש")
 
         tab_login, tab_register = st.tabs(["🔑 כניסה", "📝 הרשמה"])
 
@@ -1402,6 +1446,16 @@ def tab_settings():
         st.session_state.user["default_group_id"] = new_gid
         st.success(f"✅ ברירת מחדל עודכנה: {new_default}")
 
+    # ── המכשיר הזה — רק כשנכנסו עם קישור אישי ──
+    if st.session_state.get("device_session_id"):
+        st.markdown("<span style='color:#78716C;font-size:0.85rem'>נכנסת עם קישור אישי מהבוט. "
+                    "ניתוק המכשיר מבטל את הקישור, וכדי להיכנס שוב צריך לשלוח /dashboard לבוט.</span>",
+                    unsafe_allow_html=True)
+        if st.button("🔌 נתק את המכשיר הזה", key="revoke_device"):
+            revoke_device_session(st.session_state["device_session_id"])
+            logout()
+            st.rerun()
+
     st.markdown("---")
 
     # ── ניהול — אדמין בלבד ───────────────────────────────────────────────────
@@ -1681,6 +1735,21 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name):
 # ── MAIN ──────────────────────────────────────────────────────────────────────
 
 def main():
+    # כניסה עם קישור אישי — נבדק פעם אחת לכל טוקן בכל סשן
+    token = st.query_params.get("t")
+    if token and st.session_state.get("token_checked") != token:
+        st.session_state["token_checked"] = token
+        result = login_with_token(token)
+        if result:
+            user, session_id = result
+            for k in SESSION_KEYS:
+                st.session_state.pop(k, None)
+            st.session_state.logged_in = True
+            st.session_state.user = user
+            st.session_state.device_session_id = session_id
+        elif not st.session_state.get("logged_in"):
+            st.session_state["token_invalid"] = True
+
     if not st.session_state.get("logged_in"):
         apply_theme()
         login_page()
@@ -1719,8 +1788,7 @@ def main():
             st.rerun()
     with col_logout:
         if st.button("התנתק", use_container_width=True):
-            for k in ["logged_in", "user", "group_initialized", "main_group_select"]:
-                st.session_state.pop(k, None)
+            logout()
             st.rerun()
 
     # שורה 2: סינון חודש + קבוצה

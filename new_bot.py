@@ -11,7 +11,7 @@ from collections import defaultdict
 from dotenv import load_dotenv
 from groq import Groq
 from supabase import create_client
-from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton, LinkPreviewOptions
 from telegram.ext import ApplicationBuilder, ContextTypes, MessageHandler, filters, CommandHandler, CallbackQueryHandler
 
 load_dotenv()
@@ -216,6 +216,7 @@ async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "צפה בגרפים, ניתוח AI, הוצאות חוזרות,\n"
             "תקציב חודשי והוצאות משותפות עם הקבוצה שלך.\n\n"
             f"🔗 {DASHBOARD_URL}\n"
+            "📱 קישור כניסה אישי שזוכר את המכשיר: /dashboard\n"
             "🪪 לקבלת המזהה שלך לכניסה: /myid\n"
             "🔑 שכחת סיסמה לדשבורד? /resetpass"
         )
@@ -248,6 +249,52 @@ async def resetpass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"הזן אותו בטופס \"שכחתי סיסמה\" בדשבורד.\nהקוד תקף ל-15 דקות.",
         parse_mode='Markdown'
     )
+
+
+DASHBOARD_LINK_MAX_DAYS = 180  # תוקף מקסימלי; הדשבורד גם מבטל קישור שלא נעשה בו שימוש 30 יום
+
+
+async def dashboard_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/dashboard [שם מכשיר] — קישור כניסה אישי לדשבורד. רק בצ'אט פרטי ולמשתמשים מורשים."""
+    if not update.message:
+        return
+    user_id = update.message.from_user.id
+    if not is_authorized(user_id):
+        return
+    if not DASHBOARD_URL:
+        await update.message.reply_text("כתובת הדשבורד לא מוגדרת (DASHBOARD_URL).")
+        return
+    label = " ".join(context.args)[:40] if context.args else None
+    token = secrets.token_urlsafe(32)
+    db.table('dashboard_sessions').insert({
+        'user_id': user_id,
+        'token_hash': hashlib.sha256(token.encode()).hexdigest(),
+        'label': label,
+        'expires_at': (datetime.now(TZ) + timedelta(days=DASHBOARD_LINK_MAX_DAYS)).isoformat(),
+    }).execute()
+    sep = '&' if '?' in DASHBOARD_URL else '?'
+    link = f"{DASHBOARD_URL}{sep}t={token}"
+    # בלי parse_mode: הטוקן יכול להכיל "_" ששובר Markdown. בלי תצוגה מקדימה: שלא ייגש לקישור.
+    await update.message.reply_text(
+        "🔐 הקישור האישי שלך לדשבורד:\n\n"
+        f"{link}\n\n"
+        "פתח אותו בדפדפן ושמור כקיצור דרך במסך הבית — כך לא תצטרך להתחבר שוב.\n"
+        "⚠️ הקישור הוא כמו סיסמה: אל תשלח אותו לאף אחד.\n"
+        "לביטול כל הקישורים שלך: /logoutall",
+        link_preview_options=LinkPreviewOptions(is_disabled=True),
+    )
+
+
+async def logout_all_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """מבטל את כל קישורי הכניסה האישיים של המשתמש."""
+    if not update.message:
+        return
+    user_id = update.message.from_user.id
+    if not is_authorized(user_id):
+        return
+    res = db.table('dashboard_sessions').delete().eq('user_id', user_id).execute()
+    count = len(res.data or [])
+    await update.message.reply_text(f"🔌 בוטלו {count} קישורי כניסה. לקישור חדש: /dashboard")
 
 
 async def check_auth(update: Update, user_text: str) -> bool:
@@ -775,6 +822,8 @@ if __name__ == '__main__':
     app.add_handler(CommandHandler("help", start_help))
     app.add_handler(CommandHandler("myid", myid_cmd))
     app.add_handler(CommandHandler("resetpass", resetpass_cmd))
+    app.add_handler(CommandHandler("dashboard", dashboard_link_cmd, filters=filters.ChatType.PRIVATE))
+    app.add_handler(CommandHandler("logoutall", logout_all_cmd, filters=filters.ChatType.PRIVATE))
     app.add_handler(CommandHandler("week", weekly_report_cmd))
     app.add_handler(CallbackQueryHandler(handle_recurring_callback, pattern="^rec_"))
     app.add_handler(CallbackQueryHandler(handle_share_callback,     pattern="^share_"))
