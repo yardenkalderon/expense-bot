@@ -1,4 +1,5 @@
 import json
+import re
 import logging
 import os
 import base64
@@ -52,6 +53,17 @@ def is_authorized(user_id):
 
 def authorize_user(user_id):
     db.table('authorized_users').upsert({'user_id': user_id}).execute()
+
+
+def md(text):
+    """בורח מתווים מיוחדים של Markdown בטקסט של משתמש/AI. בלי זה פריט כמו "COFFEE_POINT"
+    מפיל את הודעת האישור אחרי שההוצאה כבר נשמרה — והמשתמש שולח שוב ונרשמת כפילות."""
+    return str(text).replace("_", "\\_").replace("*", "\\*").replace("`", "\\`").replace("[", "\\[")
+
+
+def mdb(text):
+    """לטקסט בתוך *מודגש*: שם Telegram לא מקבל escape, ו-* בתוכו היה סוגר את ההדגשה."""
+    return str(text).replace("*", "")
 
 
 def save_username(user_id, username):
@@ -135,7 +147,7 @@ def get_last_expenses(user_id):
         return "אין לך הוצאות רשומות עדיין."
     text = "🧾 *10 ההוצאות האחרונות שלך:*\n\n"
     for row in rows:
-        text += f"• {row['item']} — *{row['amount']:,.0f} ש\"ח* ({row['category']}) [{row['date'][:10]}]\n"
+        text += f"• {md(row['item'])} — *{row['amount']:,.0f} ש\"ח* ({row['category']}) [{row['date'][:10]}]\n"
     return text
 
 
@@ -328,7 +340,7 @@ async def _register_expense(update: Update, context: ContextTypes.DEFAULT_TYPE,
                             user_id: int, amount, category: str, item: str, header: str = ""):
     """שומר הוצאה, שולח אישור עם כפתורים, ובודק תקציב. משותף לטקסט/קול/קבלה."""
     exp_id = save_expense(user_id, amount, category, item)
-    conf_text = f"{header}✅ נרשם: *{amount:,.0f} ש\"ח* על {item}\n📂 קטגוריה: {category}"
+    conf_text = f"{header}✅ נרשם: *{amount:,.0f} ש\"ח* על {md(item)}\n📂 קטגוריה: {category}"
     if exp_id and get_user_groups_with_names(user_id):
         conf_text += "\n\n*לאן לשייך?*"
     await update.message.reply_text(conf_text, reply_markup=_full_keyboard(exp_id, user_id), parse_mode='Markdown')
@@ -393,7 +405,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
         os.unlink(tmp_path)
         transcribed_text = transcription.text
-        await update.message.reply_text(f"🎙️ שמעתי: _{transcribed_text}_", parse_mode='Markdown')
+        await update.message.reply_text(f"🎙️ שמעתי: {md(transcribed_text)}", parse_mode='Markdown')
         await process_and_save(update, context, user_id, transcribed_text)
     except Exception:
         log.exception("handle_voice failed")
@@ -481,24 +493,30 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if res.data:
                     row = res.data[0]
                     await update.message.reply_text(
-                        f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
+                        f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
                         parse_mode='Markdown',
                         reply_markup=_full_keyboard(exp_id, user_id)
                     )
             except ValueError:
-                await update.message.reply_text("לא הצלחתי להבין את הסכום. שלח מספר בלבד, למשל: *50*", parse_mode='Markdown')
-                context.user_data['pending_edit'] = edit_info  # שמור מחדש
+                # לא מספר — כנראה הוצאה חדשה ("קפה 15"). מבטלים את העריכה וממשיכים כרגיל
+                await update.message.reply_text("העריכה בוטלה.")
+                edit_info = None
+        elif field == 'item' and re.search(r"\d", user_text):
+            # שם פריט עם מספר הוא כמעט תמיד הוצאה חדשה ("קפה 15"), לא שם חדש
+            await update.message.reply_text("העריכה בוטלה.")
+            edit_info = None
         elif field == 'item':
             db.table('expenses').update({'item': user_text}).eq('id', exp_id).execute()
             res = db.table('expenses').select('item,amount,category').eq('id', exp_id).execute()
             if res.data:
                 row = res.data[0]
                 await update.message.reply_text(
-                    f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
+                    f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
                     parse_mode='Markdown',
                     reply_markup=_full_keyboard(exp_id, user_id)
                 )
-        return
+        if edit_info is not None:
+            return
 
     # אישור איפוס
     if user_id in pending_reset:
@@ -506,33 +524,43 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if user_text in ["כן", "אישור", "מאשר"]:
             db.table('expenses').delete().eq('user_id', user_id).execute()
             await update.message.reply_text("🗑️ כל הנתונים שלך נמחקו.")
-        else:
-            await update.message.reply_text("❌ האיפוס בוטל.")
-        return
+            return
+        await update.message.reply_text("❌ האיפוס בוטל.")
+        if user_text in ["לא", "ביטול", "בטל"]:
+            return
+        # כל הודעה אחרת (למשל "קפה 15") ממשיכה כרגיל — שלא תלך לאיבוד
 
-    if any(k in user_text for k in ["עזרה", "help"]):
+    # פקודות — רק כשהן כל ההודעה. בדיקת "מכיל" בלעה הוצאות אמיתיות:
+    # "כיסוי בטלפון 60" מחק את ההוצאה האחרונה, "דוח חניה 250" החזיר דוח במקום לרשום
+    cmd = user_text.strip(" ?!.").strip()
+
+    if cmd in ("עזרה", "help"):
         await start_help(update, context)
         return
 
-    if any(k in user_text for k in ["דוח", "סיכום", "כמה בזבזתי"]):
+    if cmd in ("דוח", "סיכום", "כמה בזבזתי"):
         await update.message.reply_text(get_monthly_report(user_id), parse_mode='Markdown')
         return
 
-    if "מה קניתי" in user_text:
+    if cmd == "מה קניתי":
         await update.message.reply_text(get_last_expenses(user_id), parse_mode='Markdown')
         return
 
-    if any(k in user_text for k in ["מחק הוצאה אחרונה", "טעות", "בטל"]):
+    if cmd in ("מחק הוצאה אחרונה", "טעות", "בטל"):
         result = db.table('expenses').select('id,item,amount').eq('user_id', user_id).order('id', desc=True).limit(1).execute()
         if result.data:
             row = result.data[0]
-            db.table('expenses').delete().eq('id', row['id']).execute()
-            await update.message.reply_text(f"🗑️ נמחק: {row['item']} ({row['amount']:,.0f} ש\"ח).")
+            kb = InlineKeyboardMarkup([[
+                InlineKeyboardButton("🗑️ כן, למחוק", callback_data=f"del_{row['id']}"),
+                InlineKeyboardButton("ביטול", callback_data="undo_no"),
+            ]])
+            await update.message.reply_text(f"למחוק את *{mdb(row['item'])}* — ₪{row['amount']:,.0f}?",
+                                            reply_markup=kb, parse_mode='Markdown')
         else:
             await update.message.reply_text("לא נמצאו הוצאות למחיקה.")
         return
 
-    if "איפוס" in user_text:
+    if cmd == "איפוס":
         pending_reset.add(user_id)
         await update.message.reply_text(
             "⚠️ האם אתה בטוח שברצונך למחוק את *כל* ההוצאות שלך?\n\n"
@@ -554,8 +582,13 @@ async def weekly_report_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(get_week_report(user_id), parse_mode='Markdown')
 
 
+REMINDER_HOURS = range(8, 21)  # 08:00–20:59 — בלי תזכורות באמצע הלילה
+
+
 async def send_recurring_reminders(bot):
     now = datetime.now(TZ)
+    if now.hour not in REMINDER_HOURS:
+        return  # הבדיקה השעתית תשלח כשהשעה תיכנס לטווח
     today_day = now.day
     current_month = now.strftime("%Y-%m")
     # כולל "השלמה": כל הוצאה שיומה כבר הגיע החודש ועוד לא נשלחה עליה תזכורת
@@ -574,7 +607,7 @@ async def send_recurring_reminders(bot):
         try:
             await bot.send_message(
                 chat_id=row["user_id"],
-                text=f"🔄 *{row['item']}* — ₪{row['amount']:,.0f}\nלרשום אוטומטית לחודש זה?",
+                text=f"🔄 *{mdb(row['item'])}* — ₪{row['amount']:,.0f}\nלרשום אוטומטית לחודש זה?",
                 reply_markup=keyboard,
                 parse_mode='Markdown'
             )
@@ -598,13 +631,13 @@ async def handle_recurring_callback(update: Update, context: ContextTypes.DEFAUL
             row = result.data[0]
             save_expense(row["user_id"], row["amount"], row["category"], row["item"])
             await query.edit_message_text(
-                f"✅ נרשם: *{row['item']}* — ₪{row['amount']:,.0f} ({row['category']})",
+                f"✅ נרשם: *{mdb(row['item'])}* — ₪{row['amount']:,.0f} ({row['category']})",
                 parse_mode='Markdown'
             )
     else:
         result = db.table("recurring_expenses").select("item").eq("id", rec_id).execute()
         item = result.data[0]["item"] if result.data else ""
-        await query.edit_message_text(f"⏭️ *{item}* — דולג החודש", parse_mode='Markdown')
+        await query.edit_message_text(f"⏭️ *{mdb(item)}* — דולג החודש", parse_mode='Markdown')
 
 
 async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -627,9 +660,9 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if exp_res.data:
             row = exp_res.data[0]
             await query.edit_message_text(
-                f"✅ נרשם: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n"
+                f"✅ נרשם: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n"
                 f"📂 קטגוריה: {row['category']}\n"
-                f"👥 שויך ל*{group_name}*",
+                f"👥 שויך ל*{mdb(group_name)}*",
                 parse_mode='Markdown',
                 reply_markup=edit_del_kb
             )
@@ -640,7 +673,7 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 try:
                     await context.bot.send_message(
                         chat_id=member_id,
-                        text=f"💸 *{username}* הוסיף ל*{group_name}*: *{row['amount']:,.0f} ש\"ח* על {row['item']} ({row['category']})",
+                        text=f"💸 *{mdb(username)}* הוסיף ל*{mdb(group_name)}*: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])} ({row['category']})",
                         parse_mode='Markdown'
                     )
                 except Exception:
@@ -693,14 +726,14 @@ async def handle_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYP
     elif sub == "amount":
         context.user_data['pending_edit'] = {'exp_id': exp_id, 'field': 'amount'}
         await query.edit_message_text(
-            (query.message.text or "") + "\n\n✏️ *שלח את הסכום החדש:*",
+            md(query.message.text or "") + "\n\n✏️ *שלחו את הסכום החדש* (הודעה אחרת מבטלת)",
             parse_mode='Markdown'
         )
 
     elif sub == "item":
         context.user_data['pending_edit'] = {'exp_id': exp_id, 'field': 'item'}
         await query.edit_message_text(
-            (query.message.text or "") + "\n\n✏️ *שלח את שם הפריט החדש:*",
+            md(query.message.text or "") + "\n\n✏️ *שלחו את שם הפריט החדש* (הודעה עם מספר מבטלת)",
             parse_mode='Markdown'
         )
 
@@ -711,6 +744,7 @@ async def handle_edit_callback(update: Update, context: ContextTypes.DEFAULT_TYP
         await query.edit_message_reply_markup(reply_markup=InlineKeyboardMarkup(cat_rows))
 
     elif sub == "cancel":
+        context.user_data.pop('pending_edit', None)
         await query.edit_message_reply_markup(reply_markup=_full_keyboard(exp_id, query.from_user.id))
 
 
@@ -728,7 +762,7 @@ async def handle_editcat_callback(update: Update, context: ContextTypes.DEFAULT_
     if res.data:
         row = res.data[0]
         await query.edit_message_text(
-            f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {row['item']}\n📂 קטגוריה: {row['category']}",
+            f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
             parse_mode='Markdown',
             reply_markup=_full_keyboard(exp_id, user_id)
         )
@@ -745,11 +779,17 @@ async def handle_del_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         row = res.data[0]
         db.table('expenses').delete().eq('id', exp_id).execute()
         await query.edit_message_text(
-            f"🗑️ נמחק: *{row['item']}* — ₪{row['amount']:,.0f}",
+            f"🗑️ נמחק: *{mdb(row['item'])}* — ₪{row['amount']:,.0f}",
             parse_mode='Markdown'
         )
     else:
         await query.edit_message_text("לא נמצאה ההוצאה.")
+
+
+async def handle_undo_no_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    await query.edit_message_text("👍 לא נמחק כלום.")
 
 
 def copy_budgets_for_new_month():
@@ -830,6 +870,7 @@ if __name__ == '__main__':
     app.add_handler(CallbackQueryHandler(handle_edit_callback,      pattern="^edit_"))
     app.add_handler(CallbackQueryHandler(handle_editcat_callback,   pattern="^editcat_"))
     app.add_handler(CallbackQueryHandler(handle_del_callback,       pattern="^del_"))
+    app.add_handler(CallbackQueryHandler(handle_undo_no_callback,   pattern="^undo_no$"))
     app.add_handler(MessageHandler(filters.VOICE, handle_voice))
     app.add_handler(MessageHandler(filters.PHOTO, handle_photo))
     app.add_handler(MessageHandler(filters.TEXT & (~filters.COMMAND), handle_message))
