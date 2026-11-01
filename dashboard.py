@@ -60,7 +60,11 @@ st.set_page_config(page_title="ניהול הוצאות", page_icon="💰", layou
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=Heebo:wght@300;400;500;600;700&display=swap');
-html, body, [class*="css"] { font-family: 'Heebo', sans-serif; direction: rtl; }
+/* html נשאר LTR: טבלת העריכה מודדת טקסט על canvas מנותק שיורש את הכיוון מ-html,
+   ובאייפון (WebKit) RTL שם מצייר את עמודות התאריך והקטגוריה מחוץ לתא. התוכן עצמו RTL דרך body */
+html { direction: ltr; }
+html, body, [class*="css"] { font-family: 'Heebo', sans-serif; }
+body, [class*="css"] { direction: rtl; }
 header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
 #MainMenu { visibility: hidden; } footer { visibility: hidden; }
 [data-testid="stToolbar"] { display: none; }
@@ -245,9 +249,6 @@ li {{ text-align: right; }}
 [data-testid="stElementContainer"]:has([data-testid="stDataFrame"]) {{ margin-top: 1.8rem; }}
 /* ה-RTL הגלובלי הופך את עיגון הטקסט ב-SVG של Plotly ומעיף תוויות צירים מחוץ לגרף */
 .js-plotly-plot, .js-plotly-plot * {{ direction: ltr !important; }}
-/* גם הטבלה מצוירת על canvas: באייפון RTL מצייר את עמודות התאריך והקטגוריה מחוץ לתא.
-   סדר העמודות לא משתנה — הטבלה כבר פרוסה משמאל לימין */
-[data-testid="stDataFrame"], [data-testid="stDataFrame"] * {{ direction: ltr !important; }}
 
 @media (max-width: 768px) {{
     /* למטה: מקום לתגים הצפים של Streamlit Cloud שמכסים את התוכן */
