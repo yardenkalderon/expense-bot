@@ -245,6 +245,9 @@ li {{ text-align: right; }}
 [data-testid="stElementContainer"]:has([data-testid="stDataFrame"]) {{ margin-top: 1.8rem; }}
 /* ה-RTL הגלובלי הופך את עיגון הטקסט ב-SVG של Plotly ומעיף תוויות צירים מחוץ לגרף */
 .js-plotly-plot, .js-plotly-plot * {{ direction: ltr !important; }}
+/* גם הטבלה מצוירת על canvas: באייפון RTL מצייר את עמודות התאריך והקטגוריה מחוץ לתא.
+   סדר העמודות לא משתנה — הטבלה כבר פרוסה משמאל לימין */
+[data-testid="stDataFrame"], [data-testid="stDataFrame"] * {{ direction: ltr !important; }}
 
 @media (max-width: 768px) {{
     /* למטה: מקום לתגים הצפים של Streamlit Cloud שמכסים את התוכן */
