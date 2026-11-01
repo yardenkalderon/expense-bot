@@ -38,7 +38,17 @@ db = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 TZ = ZoneInfo("Asia/Jerusalem")
 
-CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "חשבונות ובית", "בריאות", "אחר"]
+# הסדר חשוב: editcat_{id}_{index} שומר מיקום ברשימה, אז קטגוריה חדשה נכנסת רק בסוף
+CATEGORIES = ["אוכל ושתייה", "קניות וסופר", "תחבורה ודלק", "פנאי ובילוי", "דיור וחשבונות", "בריאות וביטוח", "אחר", "מנויים"]
+
+# רמזים למודל — בלי זה אותו פריט נרשם פעם פה ופעם שם (בר באוכל ובפנאי, ביטוח בשלוש קטגוריות)
+CATEGORY_HINTS = (
+    "דיור וחשבונות = שכר דירה, ארנונה, ועד בית, חשמל, מים, גז. "
+    "מנויים = תשלום קבוע לשירות: נטפליקס, ספוטיפיי, אפל, אינטרנט, סלולר, אפליקציות ותוכנות. "
+    "בריאות וביטוח = רופא, תרופות, וכל סוג של ביטוח. "
+    "ריהוט, כלי בית וחומרי ניקוי = קניות וסופר. "
+    "בר, בית קפה, מסעדה ומזנון = אוכל ושתייה."
+)
 
 password_attempts = {}
 pending_reset = set()
@@ -167,7 +177,7 @@ def analyze_text_with_ai(user_text):
     system_prompt = (
         f"Return ONLY JSON with keys: 'amount' (number), 'category' (Hebrew string), 'item' (Hebrew string). "
         f"You MUST use ONLY one of these exact categories: {categories_str}. "
-        f"Do NOT create new categories. If unsure, use 'אחר'."
+        f"Do NOT create new categories. If unsure, use 'אחר'. Category guide: {CATEGORY_HINTS}"
     )
     last_error = None
     for attempt in range(3):
@@ -219,7 +229,8 @@ async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "━━━━━━━━━━━━━━━\n"
         "🗂️ *קטגוריות:*\n"
         "אוכל ושתייה | קניות וסופר | תחבורה ודלק\n"
-        "פנאי ובילוי | חשבונות ובית | בריאות | אחר"
+        "פנאי ובילוי | דיור וחשבונות | מנויים\n"
+        "בריאות וביטוח | אחר"
     )
     if DASHBOARD_URL:
         help_text += (
@@ -440,7 +451,7 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                         f"Return ONLY JSON with keys: 'amount' (total number in ILS), "
                         f"'category' (Hebrew string), 'item' (Hebrew string describing what was purchased). "
                         f"You MUST use ONLY one of these exact categories: {categories_str}. "
-                        f"Do NOT create new categories. If unsure, use 'אחר'."
+                        f"Do NOT create new categories. If unsure, use 'אחר'. Category guide: {CATEGORY_HINTS}"
                     )}
                 ]
             }],

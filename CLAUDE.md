@@ -44,6 +44,9 @@ Tables: `expenses`, `authorized_users`, `budgets`, `recurring_expenses`, `groups
     1st of the month.
 - Timezone: `Asia/Jerusalem` (`TZ`) for all dates.
 - `CATEGORIES` is a fixed list, duplicated in `dashboard.py`. Keep both copies in sync.
+  Append new categories at the end: `editcat_{id}_{index}` stores the list position. Renaming a
+  category needs a data migration (see `sql/2026-11_categories.sql`). `CATEGORY_HINTS` tells the
+  model which items go where.
 
 ### `dashboard.py`
 
