@@ -76,25 +76,92 @@ def mdb(text):
     return str(text).replace("*", "")
 
 
+def fmt_ils(x):
+    """₪1,234 — ועם אגורות רק כשיש (72.5 → ₪72.50). פורמט אחד לכל ההודעות."""
+    x = float(x)
+    return f"₪{x:,.0f}" if x == int(x) else f"₪{x:,.2f}"
+
+
+def norm_item(text):
+    """מפתח להשוואת פריטים: בלי גרש/מקף/מרכאות, אותיות קטנות, רווח אחד."""
+    t = re.sub(r"[\'\"׳״־\-]", "", str(text or "")).lower()
+    return re.sub(r"\s+", " ", t).strip()
+
+
+HEB_WEEKDAYS = ["שני", "שלישי", "רביעי", "חמישי", "שישי", "שבת", "ראשון"]
+MAX_BACKDATE_DAYS = 120
+
+
+def parse_expense_date(value):
+    """תאריך שהמודל החזיר (YYYY-MM-DD) → date, או None אם אין / עתידי / ישן מדי / היום."""
+    if not value:
+        return None
+    try:
+        d = datetime.strptime(str(value)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+    today = datetime.now(TZ).date()
+    if d >= today or (today - d).days > MAX_BACKDATE_DAYS:
+        return None
+    return d
+
+
+HEB_MONTHS = {"ינואר": 1, "פברואר": 2, "מרץ": 3, "מרס": 3, "אפריל": 4, "מאי": 5, "יוני": 6, "יולי": 7,
+              "אוגוסט": 8, "ספטמבר": 9, "אוקטובר": 10, "נובמבר": 11, "דצמבר": 12}
+
+
+def parse_report_month(arg):
+    """'ספטמבר' / 'חודש שעבר' / '9' / '09/2026' / '2026-09' → 'YYYY-MM', אחרת None.
+    חודש בלי שנה שעוד לא הגיע השנה = השנה שעברה."""
+    a = arg.strip()
+    if a.startswith("ב") and a[1:] in HEB_MONTHS:  # "דוח בספטמבר"
+        a = a[1:]
+    now = datetime.now(TZ)
+    if a in ("חודש שעבר", "החודש שעבר", "חודש קודם", "קודם"):
+        return (now.replace(day=1) - timedelta(days=1)).strftime("%Y-%m")
+    if a in ("החודש", "חודש זה"):
+        return now.strftime("%Y-%m")
+    m = re.fullmatch(r"(\d{4})-(\d{1,2})", a)
+    if m:
+        y, mo = int(m.group(1)), int(m.group(2))
+    else:
+        m = re.fullmatch(r"(\d{1,2})(?:/(\d{2}|\d{4}))?", a)
+        if m:
+            mo = int(m.group(1))
+            y = int(m.group(2)) if m.group(2) else None
+            if y is not None and y < 100:
+                y += 2000
+        elif a in HEB_MONTHS:
+            mo, y = HEB_MONTHS[a], None
+        else:
+            return None
+        if y is None:
+            y = now.year if mo <= now.month else now.year - 1
+    if not 1 <= mo <= 12:
+        return None
+    return f"{y}-{mo:02d}"
+
+
 def save_username(user_id, username):
     db.table('authorized_users').update({'username': username}).eq('user_id', user_id).execute()
 
 
-def get_monthly_report(user_id):
-    month = datetime.now(TZ).strftime("%Y-%m")
+def get_monthly_report(user_id, month=None):
+    month = month or datetime.now(TZ).strftime("%Y-%m")
+    month_label = datetime.strptime(month, "%Y-%m").strftime("%m/%Y")
     result = db.table('expenses').select('category,amount').eq('user_id', user_id).like('date', f'{month}%').execute()
     rows = result.data
     if not rows:
-        return "אין לך הוצאות רשומות לחודש זה."
+        return f"אין הוצאות רשומות ל-{month_label}."
     totals = defaultdict(float)
     for row in rows:
         totals[row['category']] += row['amount']
     sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
-    report = f"📊 *סיכום הוצאות ל-{datetime.now(TZ).strftime('%m/%Y')}:*\n\n"
+    report = f"📊 *סיכום הוצאות ל-{month_label}:*\n\n"
     total = sum(totals.values())
     for cat, amt in sorted_totals:
-        report += f"▫️ *{cat}:* {amt:,.2f} ש\"ח\n"
-    report += f"\n💰 *סה\"כ: {total:,.2f} ש\"ח*"
+        report += f"▫️ *{cat}:* {fmt_ils(amt)}\n"
+    report += f"\n💰 *סה\"כ: {fmt_ils(total)}*"
     return report
 
 
@@ -110,8 +177,8 @@ def get_week_report(user_id):
     sorted_totals = sorted(totals.items(), key=lambda x: x[1], reverse=True)
     report = f"📊 *סיכום שבועי (7 ימים אחרונים):*\n\n"
     for cat, amt in sorted_totals:
-        report += f"▫️ *{cat}:* {amt:,.0f} ש\"ח\n"
-    report += f"\n💰 *סה\"כ: {sum(totals.values()):,.0f} ש\"ח*"
+        report += f"▫️ *{cat}:* {fmt_ils(amt)}\n"
+    report += f"\n💰 *סה\"כ: {fmt_ils(sum(totals.values()))}*"
     return report
 
 
@@ -157,25 +224,49 @@ def get_last_expenses(user_id):
         return "אין לך הוצאות רשומות עדיין."
     text = "🧾 *10 ההוצאות האחרונות שלך:*\n\n"
     for row in rows:
-        text += f"• {md(row['item'])} — *{row['amount']:,.0f} ש\"ח* ({row['category']}) [{row['date'][:10]}]\n"
+        text += f"• {md(row['item'])} — *{fmt_ils(row['amount'])}* ({row['category']}) [{row['date'][:10]}]\n"
     return text
 
 
-def save_expense(user_id, amount, category, item):
+def learned_category(user_id, item):
+    """הקטגוריה של הפעם האחרונה שהמשתמש רשם את אותו פריט — כולל תיקונים שעשה ידנית.
+    כך "בר" לא נרשם פעם באוכל ופעם בפנאי."""
+    key = norm_item(item)
+    if not key or key == norm_item("לא ידוע"):
+        return None
+    rows = (db.table('expenses').select('item,category').eq('user_id', user_id)
+              .order('id', desc=True).limit(500).execute().data or [])
+    for r in rows:
+        if norm_item(r.get('item')) == key and r.get('category') in CATEGORIES:
+            return r['category']
+    return None
+
+
+def save_expense(user_id, amount, category, item, when=None):
+    """when: תאריך עבר שהמשתמש ציין ("אתמול"). בלי — עכשיו."""
+    stamp = f"{when:%Y-%m-%d} 12:00:00" if when else datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
     result = db.table('expenses').insert({
         'user_id': user_id,
         'amount': amount,
         'category': category,
         'item': item,
-        'date': datetime.now(TZ).strftime("%Y-%m-%d %H:%M:%S")
+        'date': stamp
     }).execute()
     return result.data[0]['id'] if result.data else None
+
+
+def _date_instruction():
+    today = datetime.now(TZ).date()
+    return (f"Today is {today:%Y-%m-%d} (יום {HEB_WEEKDAYS[today.weekday()]}). "
+            f"'date': YYYY-MM-DD ONLY if the user explicitly said when (אתמול, שלשום, ביום שלישי, 20/10); "
+            f"otherwise null. Never a future date. ")
 
 
 def analyze_text_with_ai(user_text):
     categories_str = ", ".join(CATEGORIES)
     system_prompt = (
-        f"Return ONLY JSON with keys: 'amount' (number), 'category' (Hebrew string), 'item' (Hebrew string). "
+        f"Return ONLY JSON with keys: 'amount' (number), 'category' (Hebrew string), 'item' (Hebrew string), 'date'. "
+        f"{_date_instruction()}"
         f"You MUST use ONLY one of these exact categories: {categories_str}. "
         f"Do NOT create new categories. If unsure, use 'אחר'. Category guide: {CATEGORY_HINTS}"
     )
@@ -209,48 +300,38 @@ def analyze_text_with_ai(user_text):
 
 async def start_help(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "👋 *שלום! אני הבוט לניהול ההוצאות שלך*\n\n"
-        "אני עוזר לך לעקוב אחרי ההוצאות היומיות שלך בקלות — "
-        "פשוט כתוב לי במשפט רגיל מה קנית, ואני אדאג לשאר.\n\n"
-        "━━━━━━━━━━━━━━━\n"
-        "📝 *רישום הוצאה*\n"
-        "• טקסט: _קפה 15 שקל_\n"
-        "• הקלטה קולית: פשוט תדבר\n"
-        "• תמונת קבלה: שלח תמונה של הקבלה\n\n"
-        "━━━━━━━━━━━━━━━\n"
-        "📊 *צפייה בנתונים*\n"
-        "• *דוח* — סיכום הוצאות לפי קטגוריה החודש\n"
-        "• *מה קניתי* — 10 ההוצאות האחרונות\n\n"
-        "━━━━━━━━━━━━━━━\n"
-        "🛠️ *ניהול*\n"
-        "• *טעות* — מחיקת ההוצאה האחרונה\n"
-        "• *איפוס* — מחיקת כל הנתונים שלך\n"
-        "• *עזרה* — הצגת הודעה זו\n\n"
-        "━━━━━━━━━━━━━━━\n"
-        "🗂️ *קטגוריות:*\n"
-        "אוכל ושתייה | קניות וסופר | תחבורה ודלק\n"
-        "פנאי ובילוי | דיור וחשבונות | מנויים\n"
-        "בריאות וביטוח | אחר"
+        "👋 *בוט ההוצאות*\n\n"
+        "📝 *רישום* — פשוט לכתוב מה קניתי:\n"
+        "• קפה 15\n"
+        "• סופר 120 אתמול · בר 75 ב-20/10\n"
+        "• הודעה קולית או צילום של קבלה\n\n"
+        "📊 *צפייה*\n"
+        "• *דוח* — החודש לפי קטגוריה\n"
+        "• *דוח ספטמבר* · *דוח חודש שעבר* — חודש אחר\n"
+        "• *מה קניתי* — 10 ההוצאות האחרונות\n"
+        "• /week — 7 הימים האחרונים\n\n"
+        "🛠️ *תיקונים*\n"
+        "• ✏️ / 🗑️ מתחת לכל הוצאה — עריכה או מחיקה\n"
+        "• *טעות* — מחיקת ההוצאה האחרונה (עם אישור)\n"
+        "• *איפוס* — מחיקת כל ההוצאות\n\n"
+        f"🗂️ *קטגוריות:* {' · '.join(CATEGORIES)}\n"
+        "קטגוריה שגויה? מתקנים פעם אחת עם ✏️ — ומאז הבוט זוכר את הפריט."
     )
     if DASHBOARD_URL:
         help_text += (
-            "\n\n━━━━━━━━━━━━━━━\n"
-            "💻 *דשבורד ניהול*\n"
-            "צפה בגרפים, ניתוח AI, הוצאות חוזרות,\n"
-            "תקציב חודשי והוצאות משותפות עם הקבוצה שלך.\n\n"
-            f"🔗 {DASHBOARD_URL}\n"
-            "📱 קישור כניסה אישי שזוכר את המכשיר: /dashboard\n"
-            "🪪 לקבלת המזהה שלך לכניסה: /myid\n"
-            "🔑 שכחת סיסמה לדשבורד? /resetpass"
+            "\n\n💻 *דשבורד* — גרפים, תקציב, הוצאות קבועות ומשותפות\n"
+            "• /dashboard — קישור אישי שזוכר את המכשיר\n"
+            "• /myid — המזהה שלך · /resetpass — איפוס סיסמה\n"
+            "• /logoutall — ניתוק כל המכשירים"
         )
     await update.message.reply_text(help_text, parse_mode='Markdown')
 
 
 async def myid_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = update.message.from_user.id
-    text = f"🪪 *המזהה שלך:*\n`{user_id}`\n\n_(לחץ על המספר להעתקה)_"
+    text = f"🪪 *המזהה שלך:*\n`{user_id}`\n\n_(לחיצה על המספר מעתיקה אותו)_"
     if DASHBOARD_URL:
-        text += f"\n\n📊 השתמש במזהה זה בעת ההרשמה לדשבורד:\n{DASHBOARD_URL}"
+        text += f"\n\n📊 המזהה הזה משמש להרשמה לדשבורד:\n{DASHBOARD_URL}"
     await update.message.reply_text(text, parse_mode='Markdown')
 
 
@@ -269,7 +350,7 @@ async def resetpass_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE):
     }).eq('user_id', user_id).execute()
     await update.message.reply_text(
         f"🔑 *קוד אימות לאיפוס סיסמה בדשבורד:*\n\n`{code}`\n\n"
-        f"הזן אותו בטופס \"שכחתי סיסמה\" בדשבורד.\nהקוד תקף ל-15 דקות.",
+        f"מזינים אותו בטופס \"שכחתי סיסמה\" בדשבורד.\nהקוד תקף ל-15 דקות.",
         parse_mode='Markdown'
     )
 
@@ -301,8 +382,8 @@ async def dashboard_link_cmd(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await update.message.reply_text(
         "🔐 הקישור האישי שלך לדשבורד:\n\n"
         f"{link}\n\n"
-        "פתח אותו בדפדפן ושמור כקיצור דרך במסך הבית — כך לא תצטרך להתחבר שוב.\n"
-        "⚠️ הקישור הוא כמו סיסמה: אל תשלח אותו לאף אחד.\n"
+        "כדאי לפתוח בדפדפן ולשמור כקיצור דרך במסך הבית — ואז לא צריך להתחבר שוב.\n"
+        "⚠️ הקישור הוא כמו סיסמה — לא לשלוח אותו לאף אחד.\n"
         "לביטול כל הקישורים שלך: /logoutall",
         link_preview_options=LinkPreviewOptions(is_disabled=True),
     )
@@ -332,9 +413,9 @@ async def check_auth(update: Update, user_text: str) -> bool:
         authorize_user(user_id)
         password_attempts.pop(user_id, None)
         pending_username.add(user_id)
-        dashboard_line = f"\n\n📊 לדשבורד ההוצאות: {DASHBOARD_URL}\nהירשם עם המזהה שלך: `{user_id}` (או שלח /myid)" if DASHBOARD_URL else ""
+        dashboard_line = f"\n\n📊 לדשבורד ההוצאות: {DASHBOARD_URL}\nהמזהה שלך להרשמה: `{user_id}` (אפשר גם /myid)" if DASHBOARD_URL else ""
         await update.message.reply_text(
-            f"✅ הסיסמה נכונה! ברוך הבא.{dashboard_line}\n\nאיך קוראים לך? (שלח את שמך)",
+            f"✅ הסיסמה נכונה — איזה כיף שהצטרפת!{dashboard_line}\n\nאיך קוראים לך?",
             parse_mode='Markdown'
         )
     else:
@@ -348,10 +429,12 @@ async def check_auth(update: Update, user_text: str) -> bool:
 
 
 async def _register_expense(update: Update, context: ContextTypes.DEFAULT_TYPE,
-                            user_id: int, amount, category: str, item: str, header: str = ""):
+                            user_id: int, amount, category: str, item: str, header: str = "", when=None):
     """שומר הוצאה, שולח אישור עם כפתורים, ובודק תקציב. משותף לטקסט/קול/קבלה."""
-    exp_id = save_expense(user_id, amount, category, item)
-    conf_text = f"{header}✅ נרשם: *{amount:,.0f} ש\"ח* על {md(item)}\n📂 קטגוריה: {category}"
+    category = learned_category(user_id, item) or category
+    exp_id = save_expense(user_id, amount, category, item, when)
+    date_line = f"\n📅 {when:%d/%m}" if when else ""
+    conf_text = f"{header}✅ נרשם: *{fmt_ils(amount)}* על {md(item)}\n📂 קטגוריה: {category}{date_line}"
     if exp_id and get_user_groups_with_names(user_id):
         conf_text += "\n\n*לאן לשייך?*"
     await update.message.reply_text(conf_text, reply_markup=_full_keyboard(exp_id, user_id), parse_mode='Markdown')
@@ -362,14 +445,12 @@ async def _register_expense(update: Update, context: ContextTypes.DEFAULT_TYPE,
         pct = spent / budget
         if pct >= 1.0:
             await update.message.reply_text(
-                f"🚨 חרגת מהתקציב בקטגוריה *{category}*!\n"
-                f"הוצאת *{spent:,.0f} ש\"ח* מתוך תקציב *{budget:,.0f} ש\"ח*",
+                f"🚨 חריגה מהתקציב ב*{category}*: *{fmt_ils(spent)}* מתוך {fmt_ils(budget)}",
                 parse_mode='Markdown'
             )
         elif pct >= 0.9:
             await update.message.reply_text(
-                f"⚠️ הגעת ל-{pct*100:.0f}% מהתקציב בקטגוריה *{category}*!\n"
-                f"נשאר לך רק *{budget - spent:,.0f} ש\"ח*",
+                f"⚠️ {pct*100:.0f}% מהתקציב ב*{category}* — נשארו *{fmt_ils(budget - spent)}*",
                 parse_mode='Markdown'
             )
 
@@ -381,19 +462,20 @@ async def process_and_save(update: Update, context: ContextTypes.DEFAULT_TYPE, u
         category = data.get('category', 'אחר')
         item = data.get('item', 'לא ידוע')
         if amount > 0:
-            await _register_expense(update, context, user_id, amount, category, item)
+            await _register_expense(update, context, user_id, amount, category, item,
+                                    when=parse_expense_date(data.get('date')))
         else:
             await update.message.reply_text(
-                "לא הצלחתי לזהות סכום. נסה לנסח מחדש, למשל: _קפה 15 שקל_",
+                "לא הצלחתי לזהות סכום. אפשר לנסח מחדש, למשל: _קפה 15_",
                 parse_mode='Markdown'
             )
     except Exception as e:
         log.exception("process_and_save failed")
         err_msg = str(e)
         if "Groq" in err_msg or "API" in err_msg or "retries" in err_msg:
-            await update.message.reply_text("⚠️ שירות ה-AI לא זמין כרגע. נסה שוב בעוד כמה שניות.")
+            await update.message.reply_text("⚠️ שירות ה-AI לא זמין כרגע. כדאי לנסות שוב בעוד כמה שניות.")
         else:
-            await update.message.reply_text("לא הצלחתי לעבד את הבקשה. נסה לנסח מחדש, למשל: _קפה 15 שקל_", parse_mode='Markdown')
+            await update.message.reply_text("לא הצלחתי לעבד את הבקשה. אפשר לנסח מחדש, למשל: _קפה 15_", parse_mode='Markdown')
 
 
 async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -420,7 +502,7 @@ async def handle_voice(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await process_and_save(update, context, user_id, transcribed_text)
     except Exception:
         log.exception("handle_voice failed")
-        await update.message.reply_text("אירעה שגיאה בעיבוד ההקלטה. נסה שוב.")
+        await update.message.reply_text("אירעה שגיאה בעיבוד ההקלטה. אפשר לנסות שוב.")
 
 
 async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -448,8 +530,10 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
                     {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_data}"}},
                     {"type": "text", "text": (
                         f"This is a receipt. Extract the expense info. "
-                        f"Return ONLY JSON with keys: 'amount' (total number in ILS), "
-                        f"'category' (Hebrew string), 'item' (Hebrew string describing what was purchased). "
+                        f"Return ONLY JSON with keys: 'amount' (the final total paid in ILS — not a line item, "
+                        f"not VAT/מע\"מ, not change/עודף), "
+                        f"'category' (Hebrew string), 'item' (short Hebrew description of what was purchased), "
+                        f"'date' (YYYY-MM-DD printed on the receipt, or null). "
                         f"You MUST use ONLY one of these exact categories: {categories_str}. "
                         f"Do NOT create new categories. If unsure, use 'אחר'. Category guide: {CATEGORY_HINTS}"
                     )}
@@ -458,18 +542,22 @@ async def handle_photo(update: Update, context: ContextTypes.DEFAULT_TYPE):
             response_format={"type": "json_object"}
         )
         data = json.loads(completion.choices[0].message.content)
-        amount = data.get('amount', 0)
+        try:
+            amount = float(data.get('amount') or 0)
+        except (TypeError, ValueError):
+            amount = 0
         category = data.get('category', 'אחר')
         if category not in CATEGORIES:
             category = 'אחר'
-        item = data.get('item', 'לא ידוע')
+        item = data.get('item') or 'לא ידוע'
         if amount > 0:
-            await _register_expense(update, context, user_id, amount, category, item, header="🧾 קבלה זוהתה!\n")
+            await _register_expense(update, context, user_id, amount, category, item, header="🧾 קבלה זוהתה!\n",
+                                    when=parse_expense_date(data.get('date')))
         else:
-            await update.message.reply_text("לא הצלחתי לזהות סכום בקבלה. נסה לצלם שוב בצורה ברורה יותר.")
+            await update.message.reply_text("לא הצלחתי לזהות סכום בקבלה. אפשר לצלם שוב, קרוב וברור יותר.")
     except Exception:
         log.exception("handle_photo failed")
-        await update.message.reply_text("אירעה שגיאה בעיבוד הקבלה. נסה שוב.")
+        await update.message.reply_text("אירעה שגיאה בעיבוד הקבלה. אפשר לנסות שוב.")
 
 
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -486,7 +574,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         pending_username.discard(user_id)
         save_username(user_id, user_text)
         await update.message.reply_text(
-            f"👋 שלום {user_text}! שמחים שהצטרפת.\n\nשלח *עזרה* להוראות שימוש.",
+            f"👋 שלום {md(user_text)}! שמחים שהצטרפת.\n\nלכל האפשרויות שלחו *עזרה*.",
             parse_mode='Markdown'
         )
         return
@@ -504,7 +592,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 if res.data:
                     row = res.data[0]
                     await update.message.reply_text(
-                        f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
+                        f"✅ עודכן: *{fmt_ils(row['amount'])}* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
                         parse_mode='Markdown',
                         reply_markup=_full_keyboard(exp_id, user_id)
                     )
@@ -522,7 +610,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             if res.data:
                 row = res.data[0]
                 await update.message.reply_text(
-                    f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
+                    f"✅ עודכן: *{fmt_ils(row['amount'])}* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
                     parse_mode='Markdown',
                     reply_markup=_full_keyboard(exp_id, user_id)
                 )
@@ -553,6 +641,13 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await update.message.reply_text(get_monthly_report(user_id), parse_mode='Markdown')
         return
 
+    # "דוח ספטמבר" / "דוח חודש שעבר" / "דוח 9". אם מה שאחרי "דוח" הוא לא חודש ("דוח חניה 250") —
+    # זו הוצאה רגילה וממשיכים
+    m = re.fullmatch(r"(?:דוח|סיכום)\s+(?:של\s+|ל)?(.+)", cmd)
+    if m and (report_month := parse_report_month(m.group(1))):
+        await update.message.reply_text(get_monthly_report(user_id, report_month), parse_mode='Markdown')
+        return
+
     if cmd == "מה קניתי":
         await update.message.reply_text(get_last_expenses(user_id), parse_mode='Markdown')
         return
@@ -565,7 +660,7 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 InlineKeyboardButton("🗑️ כן, למחוק", callback_data=f"del_{row['id']}"),
                 InlineKeyboardButton("ביטול", callback_data="undo_no"),
             ]])
-            await update.message.reply_text(f"למחוק את *{mdb(row['item'])}* — ₪{row['amount']:,.0f}?",
+            await update.message.reply_text(f"למחוק את *{mdb(row['item'])}* — {fmt_ils(row['amount'])}?",
                                             reply_markup=kb, parse_mode='Markdown')
         else:
             await update.message.reply_text("לא נמצאו הוצאות למחיקה.")
@@ -574,8 +669,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if cmd == "איפוס":
         pending_reset.add(user_id)
         await update.message.reply_text(
-            "⚠️ האם אתה בטוח שברצונך למחוק את *כל* ההוצאות שלך?\n\n"
-            "שלח *כן* לאישור או כל הודעה אחרת לביטול.",
+            "⚠️ למחוק את *כל* ההוצאות שלך? אי אפשר לשחזר.\n\n"
+            "שלחו *כן* לאישור, או כל הודעה אחרת לביטול.",
             parse_mode='Markdown'
         )
         return
@@ -618,7 +713,7 @@ async def send_recurring_reminders(bot):
         try:
             await bot.send_message(
                 chat_id=row["user_id"],
-                text=f"🔄 *{mdb(row['item'])}* — ₪{row['amount']:,.0f}\nלרשום אוטומטית לחודש זה?",
+                text=f"🔄 *{mdb(row['item'])}* — {fmt_ils(row['amount'])}\nלרשום אוטומטית לחודש זה?",
                 reply_markup=keyboard,
                 parse_mode='Markdown'
             )
@@ -640,9 +735,14 @@ async def handle_recurring_callback(update: Update, context: ContextTypes.DEFAUL
         result = db.table("recurring_expenses").select("*").eq("id", rec_id).execute()
         if result.data:
             row = result.data[0]
-            save_expense(row["user_id"], row["amount"], row["category"], row["item"])
+            # לחיצה כפולה מהירה רשמה פעמיים — אם כבר נרשם החודש, לא רושמים שוב
+            month = datetime.now(TZ).strftime("%Y-%m")
+            dup = (db.table('expenses').select('id').eq('user_id', row["user_id"]).eq('item', row["item"])
+                     .eq('amount', row["amount"]).like('date', f"{month}%").limit(1).execute().data)
+            if not dup:
+                save_expense(row["user_id"], row["amount"], row["category"], row["item"])
             await query.edit_message_text(
-                f"✅ נרשם: *{mdb(row['item'])}* — ₪{row['amount']:,.0f} ({row['category']})",
+                f"✅ נרשם: *{mdb(row['item'])}* — {fmt_ils(row['amount'])} ({row['category']})",
                 parse_mode='Markdown'
             )
     else:
@@ -671,7 +771,7 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
         if exp_res.data:
             row = exp_res.data[0]
             await query.edit_message_text(
-                f"✅ נרשם: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n"
+                f"✅ נרשם: *{fmt_ils(row['amount'])}* על {md(row['item'])}\n"
                 f"📂 קטגוריה: {row['category']}\n"
                 f"👥 שויך ל*{mdb(group_name)}*",
                 parse_mode='Markdown',
@@ -684,7 +784,7 @@ async def handle_share_callback(update: Update, context: ContextTypes.DEFAULT_TY
                 try:
                     await context.bot.send_message(
                         chat_id=member_id,
-                        text=f"💸 *{mdb(username)}* הוסיף ל*{mdb(group_name)}*: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])} ({row['category']})",
+                        text=f"💸 *{mdb(username)}* · *{mdb(group_name)}*: *{fmt_ils(row['amount'])}* על {md(row['item'])} ({row['category']})",
                         parse_mode='Markdown'
                     )
                 except Exception:
@@ -773,7 +873,7 @@ async def handle_editcat_callback(update: Update, context: ContextTypes.DEFAULT_
     if res.data:
         row = res.data[0]
         await query.edit_message_text(
-            f"✅ עודכן: *{row['amount']:,.0f} ש\"ח* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
+            f"✅ עודכן: *{fmt_ils(row['amount'])}* על {md(row['item'])}\n📂 קטגוריה: {row['category']}",
             parse_mode='Markdown',
             reply_markup=_full_keyboard(exp_id, user_id)
         )
@@ -790,7 +890,7 @@ async def handle_del_callback(update: Update, context: ContextTypes.DEFAULT_TYPE
         row = res.data[0]
         db.table('expenses').delete().eq('id', exp_id).execute()
         await query.edit_message_text(
-            f"🗑️ נמחק: *{mdb(row['item'])}* — ₪{row['amount']:,.0f}",
+            f"🗑️ נמחק: *{mdb(row['item'])}* — {fmt_ils(row['amount'])}",
             parse_mode='Markdown'
         )
     else:
@@ -836,6 +936,44 @@ async def send_monthly_summaries(bot):
             pass
 
 
+NUDGE_EVERY_DAYS = 7
+
+
+def days_since_manual_expense(user_id):
+    """(ימים מאז ההוצאה האחרונה שאינה קבועה, התאריך שלה) או None. הוצאות קבועות נרשמות
+    מהתזכורות גם כשהמשתמש הפסיק לרשום — לכן לא נחשבות (אוגוסט היה כולו כזה)."""
+    fixed = {norm_item(r['item']) for r in
+             (db.table('recurring_expenses').select('item').eq('user_id', user_id).execute().data or [])}
+    rows = (db.table('expenses').select('item,date').eq('user_id', user_id)
+              .order('date', desc=True).limit(60).execute().data or [])
+    for r in rows:
+        if norm_item(r['item']) not in fixed:
+            last = datetime.strptime(r['date'][:10], "%Y-%m-%d").date()
+            return (datetime.now(TZ).date() - last).days, last
+    return None
+
+
+async def send_logging_nudges(bot):
+    """פעם בשבוע של שקט (ביום ה-7, ה-14...) — בלי מצב שמור, אז אין כפילות גם אחרי הפעלה מחדש."""
+    for row in (db.table('authorized_users').select('user_id').execute().data or []):
+        info = days_since_manual_expense(row['user_id'])
+        if not info:
+            continue
+        days, last = info
+        if days >= NUDGE_EVERY_DAYS and days % NUDGE_EVERY_DAYS == 0:
+            try:
+                await bot.send_message(
+                    chat_id=row['user_id'],
+                    text=(f"📝 לא נרשמו הוצאות מאז {last:%d/%m} ({days} ימים).\n"
+                          f"משהו לרשום? אפשר גם עם תאריך, למשל: קפה 15 אתמול"))
+            except Exception:
+                pass
+
+
+async def _nudge_job(context: ContextTypes.DEFAULT_TYPE):
+    await send_logging_nudges(context.bot)
+
+
 async def _recurring_job(context: ContextTypes.DEFAULT_TYPE):
     await send_recurring_reminders(context.bot)
 
@@ -863,6 +1001,8 @@ async def post_init(application):
     jq.run_daily(_monthly_job, time=dtime(hour=20, minute=0, tzinfo=TZ))
     # העתקת תקציב אוטומטית ב-1 בחודש (00:10), כולל השלמה אם הבוט הופעל מחדש באותו יום
     jq.run_daily(_budget_copy_job, time=dtime(hour=0, minute=10, tzinfo=TZ))
+    # תזכורת לרשום אחרי שבוע בלי הוצאות (19:00)
+    jq.run_daily(_nudge_job, time=dtime(hour=19, minute=0, tzinfo=TZ))
     jq.run_once(_budget_copy_job, when=20)
 
 
