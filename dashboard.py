@@ -245,6 +245,7 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 }}
 [class*="st-key-del_rec_"] button *, .st-key-delete_expenses button *, [class*="st-key-confirm_"] button *,
 .st-key-revoke_device button * {{ color: {c['danger']} !important; }}
+.st-key-delete_expenses button:disabled {{ opacity: .4; }}
 [class*="st-key-del_rec_"] button:hover, .st-key-delete_expenses button:hover, [class*="st-key-confirm_"] button:hover,
 .st-key-revoke_device button:hover {{ background: {c['bg2']} !important; }}
 
@@ -849,7 +850,7 @@ def login_page():
                 info = attempts.get(username, {"fails": 0, "locked_until": 0})
                 if time.time() < info["locked_until"]:
                     wait_min = int((info["locked_until"] - time.time()) / 60) + 1
-                    st.error(f"🚫 יותר מדי ניסיונות כושלים — נסה שוב בעוד כ-{wait_min} דקות")
+                    st.error(f"🚫 יותר מדי ניסיונות כושלים — אפשר לנסות שוב בעוד כ-{wait_min} דקות")
                 else:
                     db = get_db()
                     res = db.table("authorized_users").select("*").eq("dashboard_username", username).execute()
@@ -874,7 +875,7 @@ def login_page():
             with st.expander("🔓 שכחתי סיסמה"):
                 st.markdown("<span style='font-size:0.85rem'>שלחו \u2066/resetpass\u2069 לבוט בטלגרם לקבלת קוד אימות</span>",
                             unsafe_allow_html=True)
-                r_uid = st.number_input("Telegram user_id שלך", min_value=1, step=1, key="reset_uid")
+                r_uid = st.number_input("מזהה הטלגרם שלך (מספר)", min_value=1, step=1, key="reset_uid")
                 r_code = st.text_input("קוד אימות מהבוט", max_chars=6, key="reset_code")
                 r_pass1 = st.text_input("סיסמה חדשה", type="password", key="reset_p1")
                 r_pass2 = st.text_input("אימות סיסמה חדשה", type="password", key="reset_p2")
@@ -884,9 +885,9 @@ def login_page():
                     info = attempts.get(rkey, {"fails": 0, "locked_until": 0})
                     if time.time() < info["locked_until"]:
                         wait_min = int((info["locked_until"] - time.time()) / 60) + 1
-                        st.error(f"🚫 יותר מדי ניסיונות — נסה שוב בעוד כ-{wait_min} דקות")
+                        st.error(f"🚫 יותר מדי ניסיונות — אפשר לנסות שוב בעוד כ-{wait_min} דקות")
                     elif not r_code or not r_pass1 or not r_pass2:
-                        st.error("מלא את כל השדות")
+                        st.error("יש למלא את כל השדות")
                     elif r_pass1 != r_pass2:
                         st.error("הסיסמאות אינן תואמות")
                     else:
@@ -917,13 +918,13 @@ def login_page():
                                 "reset_code": None,
                                 "reset_code_expires": None,
                             }).eq("user_id", int(r_uid)).execute()
-                            st.success("✅ הסיסמה עודכנה! כנס עם הסיסמה החדשה")
+                            st.success("✅ הסיסמה עודכנה — אפשר להיכנס עם הסיסמה החדשה")
 
         # ── הרשמה ──────────────────────────────────────────────────────────────
         with tab_register:
-            st.markdown("<span style='font-size:0.85rem'>לקבלת המזהה שלך — שלח /myid לבוט</span>",
+            st.markdown("<span style='font-size:0.85rem'>לקבלת המזהה שלך — שלחו \u2066/myid\u2069 לבוט</span>",
                         unsafe_allow_html=True)
-            r_telegram_id = st.number_input("Telegram user_id", min_value=1, step=1, key="reg_uid")
+            r_telegram_id = st.number_input("מזהה טלגרם (מספר)", min_value=1, step=1, key="reg_uid")
             r_display     = st.text_input("שם תצוגה (עברית)", placeholder="למשל: יארדן", key="reg_name")
             r_username    = st.text_input("שם משתמש לדשבורד", placeholder="לועזית בלבד", key="reg_uname")
             r_pw1         = st.text_input("סיסמה", type="password", key="reg_pw1")
@@ -931,9 +932,9 @@ def login_page():
 
             if st.button("הירשם", use_container_width=True, key="reg_btn"):
                 errors = []
-                if not r_display:    errors.append("הכנס שם תצוגה")
-                if not r_username:   errors.append("הכנס שם משתמש")
-                if not r_pw1:        errors.append("הכנס סיסמה")
+                if not r_display:    errors.append("חסר שם תצוגה")
+                if not r_username:   errors.append("חסר שם משתמש")
+                if not r_pw1:        errors.append("חסרה סיסמה")
                 if r_pw1 != r_pw2:   errors.append("הסיסמאות אינן תואמות")
                 if errors:
                     for e in errors:
@@ -950,7 +951,7 @@ def login_page():
                         # בדוק אם שם משתמש תפוס
                         check_uname = db.table("authorized_users").select("user_id").eq("dashboard_username", r_username).execute()
                         if check_uname.data:
-                            st.error("שם המשתמש כבר תפוס — בחר שם אחר")
+                            st.error("שם המשתמש כבר תפוס — צריך לבחור שם אחר")
                         else:
                             db.table("authorized_users").update({
                                 "username": r_display,
@@ -959,7 +960,7 @@ def login_page():
                                 "is_admin": False,
                             }).eq("user_id", int(r_telegram_id)).execute()
                             fetch_users.clear()
-                            st.success("✅ נרשמת בהצלחה! עבור לטאב כניסה והתחבר")
+                            st.success("✅ נרשמת בהצלחה — אפשר להיכנס בלשונית \"כניסה\"")
                             st.balloons()
 
 
@@ -1080,7 +1081,7 @@ def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False
     # 3) קצב טוב מול תקציב (חיובי)
     if total_budget > 0 and is_current and days_elapsed >= 3:
         if pace < total_budget * 0.95:
-            return "🎯", f"אתה בקצב טוב — צפוי לסיים ₪{total_budget - pace:,.0f} מתחת לתקציב"
+            return "🎯", f"הקצב טוב — צפוי לסיים ₪{total_budget - pace:,.0f} מתחת לתקציב"
 
     # 4) ברירת מחדל — נתח הקטגוריה המובילה
     by_cat = df.groupby("category")["amount"].sum()
@@ -1134,7 +1135,10 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
         with c3: card("קטגוריה מובילה", top_cat)  # לא אדום — זה מידע, לא אזהרה
         with c4:
             if budget_pct is not None:
-                card("מהתקציב", f"{budget_pct:.0f}%", "red" if budget_pct > 90 else "green")
+                if budget_pct > 100:
+                    card("חריגה מהתקציב", f"{budget_pct - 100:.0f}%", "red")
+                else:
+                    card("נוצל מהתקציב", f"{budget_pct:.0f}%", "red" if budget_pct > 90 else "green")
             else:
                 card("תקציב", "לא הוגדר")
 
@@ -1164,15 +1168,15 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
         show_chart(fig, "pie_overview")
 
     with col2:
-        st.markdown("### השוואה לחודש קודם")
+        st.markdown("### " + ("השוואה לאותם ימים בחודש שעבר" if partial else "השוואה לחודש שעבר"))
         if df_prev.empty:
-            st.info("אין נתוני חודש קודם להשוואה")
+            st.info("אין נתונים מהחודש שעבר להשוואה")
         else:
             curr = df.groupby("category")["amount"].sum()
             prev = df_prev.groupby("category")["amount"].sum()
             cmp = pd.DataFrame({"curr": curr, "prev": prev}).fillna(0)
             cmp = cmp.sort_values("curr", ascending=True)   # הגדולה למעלה בגרף אופקי
-            prev_name = "אותה תקופה בחודש קודם" if partial else "חודש קודם"
+            prev_name = "אותם ימים בחודש שעבר" if partial else "החודש שעבר"
             # עמודות אופקיות — שמות הקטגוריות קריאים גם בטלפון
             fig2 = go.Figure([
                 go.Bar(name=prev_name, y=cmp.index, x=cmp["prev"], orientation="h",
@@ -1349,7 +1353,7 @@ def tab_recurring(user_id):
             st.markdown(f"<hr style='margin:0.6rem 0;border:none;border-top:1px solid {c['border']}'>",
                         unsafe_allow_html=True)
     else:
-        st.info("אין הוצאות חוזרות. הוסף את הראשונה 👇")
+        st.info("אין הוצאות חוזרות עדיין — אפשר להוסיף כאן למטה 👇")
 
     # ── טופס הוספה ──
     with st.expander("➕ הוסף הוצאה חוזרת"):
@@ -1369,7 +1373,7 @@ def tab_recurring(user_id):
                     st.toast(f"נוסף: {r_item} — ₪{r_amount:,.0f} בכל יום {r_day} לחודש", icon="✅")
                     st.rerun()
                 else:
-                    st.error("מלא פריט וסכום")
+                    st.error("יש למלא פריט וסכום")
 
 
 def tab_table(df_all, user_id, selected_month, display_name):
@@ -1393,7 +1397,7 @@ def tab_table(df_all, user_id, selected_month, display_name):
                     st.toast(f"נוסף: {m_item} — ₪{m_amount:,.0f}", icon="✅")
                     st.rerun()
                 else:
-                    st.error("מלא סכום ופריט")
+                    st.error("יש למלא סכום ופריט")
 
     if df_all.empty:
         st.info("אין נתונים")
@@ -1604,7 +1608,10 @@ def tab_shared(groups, uid, selected_month):
     st.markdown("### הוצאות משותפות")
 
     if not groups:
-        st.info("אין לך קבוצות. צור קבוצה בלשונית ⚙️ הגדרות")
+        if st.session_state.user.get("is_admin"):
+            st.info("אין לך קבוצות עדיין. אפשר ליצור קבוצה בלשונית ⚙️ הגדרות")
+        else:
+            st.info("אין לך קבוצות עדיין — המנהל יכול להוסיף אותך לקבוצה")
         return
 
     group_options = {g["id"]: g["name"] for g in groups}
@@ -1630,7 +1637,7 @@ def tab_shared(groups, uid, selected_month):
 
     df = fetch_shared_expenses(selected_gid, selected_month)
     if df.empty:
-        st.info("אין הוצאות משותפות לחודש זה.\nכשתרשום הוצאה בבוט, בחר 'שייך לקבוצה'.")
+        st.info("אין הוצאות משותפות לחודש זה.\nכדי לשייך הוצאה לקבוצה, בוחרים 'שייך לקבוצה' כשרושמים אותה בבוט.")
         return
 
     df["user_name"] = df["user_id"].map(user_map).fillna(df["user_id"].astype(str))
@@ -1642,7 +1649,8 @@ def tab_shared(groups, uid, selected_month):
 
     # ── השורה התחתונה קודם: מי חייב למי ──
     if len(member_ids) < 2:
-        st.warning("⚠️ הקבוצה צריכה לפחות 2 חברים לחישוב פשרה — הוסף חברים בלשונית ⚙️ הגדרות")
+        where = "בלשונית ⚙️ הגדרות" if st.session_state.user.get("is_admin") else "דרך המנהל"
+        st.warning(f"⚠️ להתחשבנות צריך לפחות 2 חברים בקבוצה — אפשר להוסיף חברים {where}")
     elif settlements:
         for debtor, creditor, amount in settlements:
             st.markdown(
@@ -1727,26 +1735,25 @@ def tab_settings():
             st.session_state["ask_revoke"] = True
             st.rerun()
 
-    st.markdown("---")
-
-    # ── ניהול — אדמין בלבד ───────────────────────────────────────────────────
-    st.markdown("### ניהול משתמשים")
-
+    # ── ניהול — אדמין בלבד (למשתמש רגיל לא מציגים בכלל) ─────────────────────
     if not st.session_state.user.get("is_admin"):
-        st.warning("גישה מוגבלת — אדמין בלבד")
         return
+
+    st.markdown("---")
+    st.markdown("### ניהול משתמשים")
 
     db = get_db()
     users = fetch_users()
     if users:
         df_u = pd.DataFrame(users)
-        cols_show = [c for c in ["user_id", "username", "dashboard_username", "is_admin"] if c in df_u.columns]
-        st.dataframe(df_u[cols_show].fillna(""), use_container_width=True, hide_index=True)
+        names = {"user_id": "מזהה טלגרם", "username": "שם", "dashboard_username": "שם משתמש", "is_admin": "אדמין"}
+        cols_show = [c for c in names if c in df_u.columns]
+        st.dataframe(df_u[cols_show].fillna("").rename(columns=names), use_container_width=True, hide_index=True)
 
     st.markdown("---")
     st.markdown("#### הוסף / עדכן משתמש")
 
-    uid = st.number_input("Telegram user_id", min_value=0, step=1)
+    uid = st.number_input("מזהה טלגרם (מספר)", min_value=0, step=1)
     uname = st.text_input("שם תצוגה (עברית)")
     dash_user = st.text_input("שם משתמש לדשבורד")
     dash_pass = st.text_input("סיסמה לדשבורד", type="password")
@@ -1764,7 +1771,7 @@ def tab_settings():
             fetch_users.clear()
             st.success(f"המשתמש '{dash_user}' נשמר!")
         else:
-            st.error("מלא user_id, שם משתמש וסיסמה")
+            st.error("יש למלא מזהה טלגרם, שם משתמש וסיסמה")
 
     st.markdown("---")
     st.markdown("### ניהול קבוצות")
@@ -1791,7 +1798,7 @@ def tab_settings():
                                            key=f"add_{g['id']}")
                     if st.button("הוסף", key=f"add_btn_{g['id']}"):
                         add_group_member(g["id"], add_uid)
-                        st.success("נוסף!")
+                        st.toast("החבר נוסף לקבוצה", icon="✅")
                         st.rerun()
 
                 # Remove member (not creator)
@@ -1803,12 +1810,19 @@ def tab_settings():
                                            key=f"rem_{g['id']}")
                     if st.button("הסר", key=f"rem_btn_{g['id']}"):
                         remove_group_member(g["id"], rem_uid)
-                        st.success("הוסר!")
+                        st.toast("החבר הוסר מהקבוצה", icon="✅")
                         st.rerun()
 
-                if st.button("🗑️ מחק קבוצה", key=f"del_{g['id']}"):
-                    delete_group(g["id"])
-                    st.success("הקבוצה נמחקה")
+                if st.session_state.get("ask_del_group") == g["id"]:
+                    answer = confirm_row(f"למחוק את הקבוצה {g['name']}? אי אפשר לבטל.", "🗑️ כן, למחוק", f"del_group_{g['id']}")
+                    if answer is not None:
+                        st.session_state.pop("ask_del_group", None)
+                        if answer:
+                            delete_group(g["id"])
+                            st.toast("הקבוצה נמחקה", icon="🗑️")
+                        st.rerun()
+                elif st.button("🗑️ מחק קבוצה", key=f"del_{g['id']}"):
+                    st.session_state["ask_del_group"] = g["id"]
                     st.rerun()
     else:
         st.info("אין קבוצות עדיין")
