@@ -1059,19 +1059,32 @@ def projected_spend(spent, recurring, budgets, selected_month):
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
+def fixed_due_by_cat(recurring, budgets, selected_month):
+    """הוצאות קבועות שעוד לא ירדו החודש, לפי קטגוריה (רק בחודש הנוכחי ורק בקטגוריות עם תקציב).
+    "עוד לא ירדה" = יום החיוב שלה עוד לא הגיע."""
+    days_elapsed, _, is_current = month_progress(selected_month)
+    due = {}
+    if not is_current:
+        return due
+    for r in recurring or []:
+        cat = r.get("category")
+        if r.get("active", True) and (budgets or {}).get(cat, 0) > 0 and r.get("day_of_month", 1) > days_elapsed:
+            due[cat] = due.get(cat, 0) + float(r["amount"])
+    return due
+
+
 def left_to_spend(df, budgets, recurring, selected_month):
     """כמה עוד אפשר להוציא החודש: תקציב פחות מה שהוצא, פחות הוצאות קבועות שעוד לא ירדו.
-    מחזיר (נשאר, ליום, קבועות_שעוד_יירדו, ימים_שנשארו) או None כשאין תקציב / זה לא החודש הנוכחי."""
+    מחזיר dict או None כשאין תקציב / זה לא החודש הנוכחי."""
     days_elapsed, days_in_month, is_current = month_progress(selected_month)
     spent, total_budget = budget_usage(df, budgets)
     if not is_current or total_budget <= 0:
         return None
-    fixed_due = sum(float(r["amount"]) for r in recurring or []
-                    if r.get("active", True) and (budgets or {}).get(r.get("category"), 0) > 0
-                    and r.get("day_of_month", 1) > days_elapsed)
+    fixed_due = sum(fixed_due_by_cat(recurring, budgets, selected_month).values())
     left = total_budget - spent - fixed_due
     days_left = days_in_month - days_elapsed + 1  # כולל היום
-    return left, left / days_left, fixed_due, days_left
+    return dict(left=left, per_day=left / days_left, fixed_due=fixed_due, days_left=days_left,
+                spent=spent, budget=total_budget)
 
 
 def _day_label(d):
@@ -1143,15 +1156,17 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
     # ── השאלה שבגללה פותחים את הדשבורד: כמה עוד אפשר להוציא ──
     lts = left_to_spend(df, budgets, recurring, selected_month)
     if lts:
-        left, per_day, fixed_due, days_left = lts
+        left, per_day, fixed_due, days_left = lts["left"], lts["per_day"], lts["fixed_due"], lts["days_left"]
         if left >= 0:
             head = f"נשארו <b style='color:{c['accent2']}'>₪{left:,.0f}</b> החודש"
             sub = f"בערך ₪{per_day:,.0f} ליום · {days_left} ימים עד סוף החודש"
         else:
             head = f"<b style='color:{c['danger']}'>חריגה של ₪{-left:,.0f}</b> מהתקציב"
             sub = f"כולל הוצאות קבועות שעוד יירדו החודש"
-        fixed_note = (f"<div style='color:{c['muted']};font-size:0.78rem;margin-top:4px'>"
-                      f"אחרי ₪{fixed_due:,.0f} בהוצאות קבועות שעוד לא ירדו</div>") if fixed_due > 0 and left >= 0 else ""
+        # החישוב עצמו, כדי שיהיה ברור למה "נשארו" קטן ממה שנראה בפסי התקציב
+        fixed_part = f" − ₪{fixed_due:,.0f} קבועות שעוד יירדו" if fixed_due > 0 else ""
+        fixed_note = (f"<div style='color:{c['muted']};font-size:0.78rem;margin-top:6px'>"
+                      f"₪{lts['budget']:,.0f} תקציב − ₪{lts['spent']:,.0f} שהוצאת{fixed_part}</div>")
         st.markdown(f"""
         <div style="background:{c['bg']};border:1px solid {c['border']};border-radius:14px;
                     padding:14px 16px;margin-bottom:12px;text-align:right">
@@ -1594,7 +1609,7 @@ def tab_table(df_all, user_id, selected_month, display_name):
         st.session_state.pop("ask_del_exp", None)
 
 
-def tab_budget(df, selected_month, user_id, group_id=0):
+def tab_budget(df, selected_month, user_id, group_id=0, recurring=None):
     # Load from DB if not in session
     bkey = f"budget_{selected_month}_{group_id}"
     if bkey not in st.session_state:
@@ -1630,15 +1645,22 @@ def tab_budget(df, selected_month, user_id, group_id=0):
                 return "#F07862" if p > 0.9 else "#E0A93B" if p > 0.7 else "#5FBF87"
             return "#CF4A38" if p > 0.9 else "#DB8A0C" if p > 0.7 else "#3B8C5E"
 
-        # טבעת כוללת — כמה מהתקציב הכולל נוצל
+        # הוצאות קבועות שעוד יירדו החודש — מוצגות כחלק "שמור" בהיר, כדי שהטבעת והפסים
+        # יגידו את אותו דבר כמו "נשארו" בסקירה
+        reserved = fixed_due_by_cat(recurring, active, selected_month)
+        reserved_color = c["prev_bar"]
+
+        # טבעת כוללת — כמה מהתקציב הכולל נוצל, ועוד כמה שמור לקבועות
         total_spent, total_budget = budget_usage(df, active)
+        total_reserved = sum(reserved.values())
         overall = total_spent / total_budget if total_budget else 0
         ring_pct = min(overall, 1.0) * 100
-        ring_color = bar_color(overall)
+        res_end = min(overall + total_reserved / total_budget if total_budget else 0, 1.0) * 100
+        ring_color = bar_color((total_spent + total_reserved) / total_budget if total_budget else 0)
         st.markdown(f"""
         <div style="display:flex;align-items:center;gap:22px;justify-content:center;flex-wrap:wrap;margin:6px 0 18px">
           <div style="width:150px;height:150px;border-radius:50%;flex-shrink:0;
-               background:conic-gradient({ring_color} 0 {ring_pct}%, {track} {ring_pct}% 100%);
+               background:conic-gradient({ring_color} 0 {ring_pct}%, {reserved_color} {ring_pct}% {res_end}%, {track} {res_end}% 100%);
                display:grid;place-items:center">
             <div style="width:114px;height:114px;border-radius:50%;background:{c['bg']};display:grid;place-items:center;text-align:center">
               <div>
@@ -1651,6 +1673,7 @@ def tab_budget(df, selected_month, user_id, group_id=0):
             <div style="color:{c['muted']};font-size:0.8rem">הוצאת</div>
             <div style="color:{c['text']};font-size:1.35rem;font-weight:700">₪{total_spent:,.0f}</div>
             <div style="color:{c['muted']};font-size:0.8rem">מתוך ₪{total_budget:,.0f}</div>
+            {f"<div style='color:{c['muted']};font-size:0.8rem;margin-top:4px'><span style='display:inline-block;width:9px;height:9px;border-radius:2px;background:{reserved_color}'></span> ₪{total_reserved:,.0f} שמור לקבועות</div>" if total_reserved else ""}
           </div>
         </div>""", unsafe_allow_html=True)
 
@@ -1664,21 +1687,28 @@ def tab_budget(df, selected_month, user_id, group_id=0):
             st.markdown(f"<span style='color:{c['muted']};font-size:0.8rem'>הקו הדק בכל פס = היום ה-{days_elapsed} "
                         f"מתוך {days_in_month} בחודש. פס שעבר אותו מתקדם מהר מהתקציב.</span>", unsafe_allow_html=True)
         rows = ""
-        for cat, budget in sorted(active.items(), key=lambda kv: -float(cat_totals.get(kv[0], 0)) / kv[1]):
+        def committed(cat):
+            return float(cat_totals.get(cat, 0)) + reserved.get(cat, 0)
+
+        for cat, budget in sorted(active.items(), key=lambda kv: -committed(kv[0]) / kv[1]):
             spent = float(cat_totals.get(cat, 0))
+            res = reserved.get(cat, 0)
             pct = spent / budget if budget else 0
-            color = bar_color(pct)
-            left = budget - spent
-            note = f"נשארו ₪{left:,.0f}" if left >= 0 else f"חריגה של ₪{-left:,.0f}"
+            res_pct = min(res / budget, max(1.0 - pct, 0)) if budget else 0
+            color = bar_color((spent + res) / budget if budget else 0)
+            left = budget - spent - res
+            res_txt = f"₪{res:,.0f} שמור לקבועות · " if res else ""
+            note = res_txt + (f"נשארו ₪{left:,.0f}" if left >= 0 else f"חריגה של ₪{-left:,.0f}")
             rows += f"""
             <div style="margin:12px 0">
               <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:5px;gap:8px">
-                <span style="color:{c['text']};font-weight:500">{cat}</span>
-                <span style="color:{c['muted']}">₪{spent:,.0f} מתוך ₪{budget:,.0f} · {note}</span>
+                <span style="color:{c['text']};font-weight:500;white-space:nowrap">{cat}</span>
+                <span style="color:{c['muted']};text-align:left">₪{spent:,.0f} מתוך ₪{budget:,.0f} · {note}</span>
               </div>
               <div style="position:relative">
-                <div style="height:9px;background:{track};border-radius:999px;overflow:hidden">
-                  <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color};border-radius:999px"></div>
+                <div style="height:9px;background:{track};border-radius:999px;overflow:hidden;display:flex">
+                  <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color}"></div>
+                  <div style="height:100%;width:{res_pct*100:.1f}%;background:{reserved_color}"></div>
                 </div>{tick}
               </div>
             </div>"""
@@ -2246,7 +2276,7 @@ def main():
     with t1:
         tab_overview(df, df_prev_cmp, budgets, selected_month, partial, recurring)
         st.markdown("---")
-        tab_budget(df, selected_month, uid, active_group_id)
+        tab_budget(df, selected_month, uid, active_group_id, recurring)
     with t2: tab_table(df_all, uid, selected_month, display_name)
     with t3: tab_trends(df_all)
     with t4:
