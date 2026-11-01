@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, date
 from zoneinfo import ZoneInfo
 
 TZ = ZoneInfo("Asia/Jerusalem")
+import calendar
 import hashlib
 import html
 import os
@@ -212,18 +213,24 @@ header[data-testid="stHeader"] {{ display: none !important; }}
 .st-key-theme_btn button:hover, .st-key-logout_btn button:hover {{ background: {c['bg2']} !important; }}
 
 /* פעולות משניות ברשימות (השהה/ערוך) — מסגרת במקום מילוי, כדי שהמסך לא יהיה קיר של כפתורים */
-[class*="st-key-tog_"] button, [class*="st-key-edit_rec_"] button, [class*="st-key-keep_rec_"] button {{
+[class*="st-key-tog_"] button, [class*="st-key-edit_rec_"] button, [class*="st-key-keep_rec_"] button,
+[class*="st-key-cancel_"] button {{
     background: transparent !important; border: 1px solid {c['accent']} !important;
 }}
-[class*="st-key-tog_"] button *, [class*="st-key-edit_rec_"] button *, [class*="st-key-keep_rec_"] button * {{ color: {c['accent']} !important; }}
-[class*="st-key-tog_"] button:hover, [class*="st-key-edit_rec_"] button:hover, [class*="st-key-keep_rec_"] button:hover {{ background: {c['bg2']} !important; }}
+[class*="st-key-tog_"] button *, [class*="st-key-edit_rec_"] button *, [class*="st-key-keep_rec_"] button *,
+[class*="st-key-cancel_"] button * {{ color: {c['accent']} !important; }}
+[class*="st-key-tog_"] button:hover, [class*="st-key-edit_rec_"] button:hover, [class*="st-key-keep_rec_"] button:hover,
+[class*="st-key-cancel_"] button:hover {{ background: {c['bg2']} !important; }}
 
 /* פעולה הרסנית — מסגרת אדומה במקום מילוי */
-[class*="st-key-del_rec_"] button, .st-key-delete_expenses button {{
+[class*="st-key-del_rec_"] button, .st-key-delete_expenses button, [class*="st-key-confirm_"] button,
+.st-key-revoke_device button {{
     background: transparent !important; border: 1px solid {c['danger']} !important;
 }}
-[class*="st-key-del_rec_"] button *, .st-key-delete_expenses button * {{ color: {c['danger']} !important; }}
-[class*="st-key-del_rec_"] button:hover, .st-key-delete_expenses button:hover {{ background: {c['bg2']} !important; }}
+[class*="st-key-del_rec_"] button *, .st-key-delete_expenses button *, [class*="st-key-confirm_"] button *,
+.st-key-revoke_device button * {{ color: {c['danger']} !important; }}
+[class*="st-key-del_rec_"] button:hover, .st-key-delete_expenses button:hover, [class*="st-key-confirm_"] button:hover,
+.st-key-revoke_device button:hover {{ background: {c['bg2']} !important; }}
 
 /* ערך שנבחר בתיבות בחירה — בצבע הטקסט ולא בצבע המושתק (היה כמעט בלתי קריא בלילה) */
 [data-testid="stSelectbox"] input {{ color: {c['text']} !important; -webkit-text-fill-color: {c['text']} !important; }}
@@ -656,7 +663,11 @@ def generate_pdf(df, selected_month, display_name):
     # ── Summary cards ──
     if not df.empty:
         total     = df["amount"].sum()
-        daily_avg = total / max(df["date"].dt.date.nunique(), 1)
+        if selected_month == "הכל":
+            span_days = (df["date"].max().date() - df["date"].min().date()).days + 1
+        else:
+            span_days = month_progress(selected_month)[0]
+        daily_avg = total / max(span_days, 1)
         top_cat   = df.groupby("category")["amount"].sum().idxmax()
 
         card_data = [
@@ -963,25 +974,66 @@ def vs_prev_label(partial):
     return "מאותה תקופה בחודש שעבר" if partial else "מהחודש שעבר"
 
 
-# ── TABS ──────────────────────────────────────────────────────────────────────
+def n_expenses(n):
+    return "הוצאה אחת" if n == 1 else f"{n} הוצאות"
 
-def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False):
-    """מחזיר (אימוג'י, טקסט) — תובנה חכמה אחת, או None. בלי AI, מיידי.
-    df_prev כבר חתוך לאותה תקופה (same_period) כשהחודש הנוכחי חלקי."""
-    total_budget = sum(budgets.values()) if budgets else 0
 
-    # 1) קצב מול תקציב — רק בחודש הנוכחי, כשיש חריגה צפויה
+def confirm_row(question, yes_label, key):
+    """שאלת אישור עם שני כפתורים. מחזיר True / False (ביטול) / None (עוד לא נבחר)."""
+    st.warning(question)
+    b1, b2 = st.columns(2)
+    with b1:
+        if st.button(yes_label, key=f"confirm_{key}", use_container_width=True):
+            return True
+    with b2:
+        if st.button("ביטול", key=f"cancel_{key}", use_container_width=True):
+            return False
+    return None
+
+
+def month_progress(selected_month):
+    """(ימים שעברו, ימים בחודש, האם זה החודש הנוכחי). בחודש שעבר — כל הימים עברו."""
     try:
         y, m = map(int, selected_month.split("-"))
-        days_in_month = (date(y, m + 1, 1) - date(y, m, 1)).days if m < 12 else 31
+        days_in_month = calendar.monthrange(y, m)[1]
         now = datetime.now(TZ)
         is_current = (now.year == y and now.month == m)
-        days_elapsed = now.day if is_current else days_in_month
+        return (now.day if is_current else days_in_month), days_in_month, is_current
     except Exception:
-        is_current, days_elapsed, days_in_month = False, 30, 30
+        return 30, 30, False
 
+
+def budget_usage(df, budgets):
+    """(הוצאה בקטגוריות שיש להן תקציב, סך התקציב) — אותו חישוב בסקירה ובלשונית התקציב."""
+    active = {cat: v for cat, v in (budgets or {}).items() if v > 0}
+    if not active or df.empty:
+        return 0.0, float(sum(active.values()))
+    by_cat = df.groupby("category")["amount"].sum()
+    return float(sum(by_cat.get(cat, 0) for cat in active)), float(sum(active.values()))
+
+
+def projected_spend(spent, recurring, budgets, selected_month):
+    """תחזית לסוף החודש. הוצאות קבועות (שכירות, ארנונה) נספרות פעם אחת ולא מוכפלות בקצב היומי —
+    אחרת שכירות ביום 3 נראית כמו חריגה של עשרות אלפים."""
+    days_elapsed, days_in_month, _ = month_progress(selected_month)
+    fixed = [r for r in recurring or [] if r.get("active", True) and (budgets or {}).get(r.get("category"), 0) > 0]
+    fixed_total = sum(float(r["amount"]) for r in fixed)
+    fixed_paid = sum(float(r["amount"]) for r in fixed if r.get("day_of_month", 1) <= days_elapsed)
+    variable = max(spent - fixed_paid, 0)
+    return variable / max(days_elapsed, 1) * days_in_month + fixed_total
+
+
+# ── TABS ──────────────────────────────────────────────────────────────────────
+
+def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False, recurring=None):
+    """מחזיר (אימוג'י, טקסט) — תובנה חכמה אחת, או None. בלי AI, מיידי.
+    df_prev כבר חתוך לאותה תקופה (same_period) כשהחודש הנוכחי חלקי."""
+    spent, total_budget = budget_usage(df, budgets)
+    days_elapsed, days_in_month, is_current = month_progress(selected_month)
+    pace = projected_spend(spent, recurring, budgets, selected_month) if total_budget > 0 else 0
+
+    # 1) קצב מול תקציב — רק בחודש הנוכחי, כשיש חריגה צפויה
     if total_budget > 0 and is_current and days_elapsed >= 3:
-        pace = total / max(days_elapsed, 1) * days_in_month
         if pace > total_budget * 1.05:
             return "⚠️", f"בקצב הנוכחי צפוי לחרוג מהתקציב ב-₪{pace - total_budget:,.0f} עד סוף החודש"
 
@@ -1001,7 +1053,6 @@ def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False
 
     # 3) קצב טוב מול תקציב (חיובי)
     if total_budget > 0 and is_current and days_elapsed >= 3:
-        pace = total / max(days_elapsed, 1) * days_in_month
         if pace < total_budget * 0.95:
             return "🎯", f"אתה בקצב טוב — צפוי לסיים ₪{total_budget - pace:,.0f} מתחת לתקציב"
 
@@ -1012,17 +1063,17 @@ def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False
     return "💡", f"{top_cat} היא ההוצאה הגדולה שלך החודש — {share:.0f}% מסך ההוצאות"
 
 
-def tab_overview(df, df_prev, budgets, selected_month=None, partial=False):
+def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recurring=None):
     if df.empty:
         st.info("אין הוצאות רשומות לחודש זה.")
         return
 
     total = df["amount"].sum()
-    active_days = df["date"].dt.date.nunique()
-    daily_avg = total / max(active_days, 1)
+    # מחלקים בימים שעברו בחודש, לא בימים שהיו בהם הוצאות (אחרת ב-1 לחודש הממוצע = כל הסכום)
+    daily_avg = total / month_progress(selected_month)[0]
     top_cat = df.groupby("category")["amount"].sum().idxmax()
-    total_budget = sum(budgets.values()) if budgets else 0
-    budget_pct = (total / total_budget * 100) if total_budget > 0 else None
+    budget_spent, total_budget = budget_usage(df, budgets)
+    budget_pct = (budget_spent / total_budget * 100) if total_budget > 0 else None
 
     # שינוי מול חודש קודם (באותה תקופה) — לכרטיס הגיבור
     chip = None
@@ -1035,7 +1086,7 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False):
             chip = f"{arrow} {abs(change):.0f}% {vs_prev_label(partial)}"
 
     # באנר תובנה חכמה — משפט אחד מחושב, בלי AI
-    insight = _overview_insight(df, df_prev, budgets, selected_month, total, partial)
+    insight = _overview_insight(df, df_prev, budgets, selected_month, total, partial, recurring)
     if insight:
         c = tc()
         emoji, text = insight
@@ -1289,7 +1340,7 @@ def tab_recurring(user_id):
             if st.form_submit_button("➕ הוסף"):
                 if r_item and r_amount > 0:
                     save_recurring(user_id, r_item, r_cat, r_amount, r_day)
-                    st.success(f"נוסף: {r_item} — ₪{r_amount:,.0f} בכל יום {r_day} לחודש")
+                    st.toast(f"נוסף: {r_item} — ₪{r_amount:,.0f} בכל יום {r_day} לחודש", icon="✅")
                     st.rerun()
                 else:
                     st.error("מלא פריט וסכום")
@@ -1313,7 +1364,7 @@ def tab_table(df_all, user_id, selected_month, display_name):
             if st.form_submit_button("➕ הוסף"):
                 if m_amount > 0 and m_item:
                     add_expense(user_id, m_amount, m_category, m_item, m_date)
-                    st.success(f"נוסף: {m_item} — ₪{m_amount:,.0f}")
+                    st.toast(f"נוסף: {m_item} — ₪{m_amount:,.0f}", icon="✅")
                     st.rerun()
                 else:
                     st.error("מלא סכום ופריט")
@@ -1389,19 +1440,14 @@ def tab_table(df_all, user_id, selected_month, display_name):
                     )
                     changed += 1
             if changed:
-                st.success(f"עודכנו {changed} הוצאות!")
+                st.toast("עודכנה הוצאה אחת" if changed == 1 else f"עודכנו {changed} הוצאות", icon="✅")
                 st.rerun()
             else:
                 st.info("לא זוהו שינויים")
     with col_del:
         to_delete = edited[edited["מחק"] == True]
         if st.button(f"🗑️ מחק נבחרים ({len(to_delete)})", key="delete_expenses", disabled=len(to_delete) == 0):
-            db = get_db()
-            for _, row in to_delete.iterrows():
-                db.table("expenses").delete().eq("id", int(row["id"])).execute()
-            fetch_expenses.clear()
-            st.success(f"נמחקו {len(to_delete)} הוצאות!")
-            st.rerun()
+            st.session_state["ask_del_exp"] = True
     with col_pdf:
         try:
             label = "all" if all_months else datetime.strptime(selected_month, "%Y-%m").strftime("%m-%Y")
@@ -1414,6 +1460,22 @@ def tab_table(df_all, user_id, selected_month, display_name):
             )
         except Exception as e:
             st.warning(f"לא ניתן ליצור PDF: {e}")
+
+    # מחיקה בשני שלבים — אין "בטל" אחרי מחיקה, ותיבת הסימון קטנה וקל לסמן בטעות
+    if st.session_state.get("ask_del_exp") and len(to_delete):
+        answer = confirm_row(f"למחוק {n_expenses(len(to_delete))} בסך ₪{to_delete['סכום (₪)'].sum():,.0f}? אי אפשר לבטל.",
+                             "🗑️ כן, למחוק", "del_exp")
+        if answer is not None:
+            st.session_state.pop("ask_del_exp", None)
+            if answer:
+                db = get_db()
+                for _, row in to_delete.iterrows():
+                    db.table("expenses").delete().eq("id", int(row["id"])).execute()
+                fetch_expenses.clear()
+                st.toast(f"נמחקה {n_expenses(1)}" if len(to_delete) == 1 else f"נמחקו {n_expenses(len(to_delete))}", icon="🗑️")
+            st.rerun()
+    elif not len(to_delete):
+        st.session_state.pop("ask_del_exp", None)
 
 
 def tab_budget(df, selected_month, user_id, group_id=0):
@@ -1453,8 +1515,7 @@ def tab_budget(df, selected_month, user_id, group_id=0):
             return "#CF4A38" if p > 0.9 else "#DB8A0C" if p > 0.7 else "#3B8C5E"
 
         # טבעת כוללת — כמה מהתקציב הכולל נוצל
-        total_budget = sum(active.values())
-        total_spent = float(sum(cat_totals.get(cat, 0) for cat in active))
+        total_spent, total_budget = budget_usage(df, active)
         overall = total_spent / total_budget if total_budget else 0
         ring_pct = min(overall, 1.0) * 100
         ring_color = bar_color(overall)
@@ -1630,9 +1691,16 @@ def tab_settings():
         st.markdown("<span style='font-size:0.85rem'>נכנסת עם קישור אישי מהבוט. "
                     "ניתוק המכשיר מבטל את הקישור, וכדי להיכנס שוב צריך לשלוח /dashboard לבוט.</span>",
                     unsafe_allow_html=True)
-        if st.button("🔌 נתק את המכשיר הזה", key="revoke_device"):
-            revoke_device_session(st.session_state["device_session_id"])
-            logout()
+        if st.session_state.get("ask_revoke"):
+            answer = confirm_row("לנתק את המכשיר? הקישור יבוטל, וכדי להיכנס שוב צריך קישור חדש מהבוט.", "🔌 כן, לנתק", "revoke")
+            if answer is not None:
+                st.session_state.pop("ask_revoke", None)
+                if answer:
+                    revoke_device_session(st.session_state["device_session_id"])
+                    logout()
+                st.rerun()
+        elif st.button("🔌 נתק את המכשיר הזה", key="revoke_device"):
+            st.session_state["ask_revoke"] = True
             st.rerun()
 
     st.markdown("---")
@@ -1984,8 +2052,16 @@ def main():
                 st.rerun()
         with col_logout:
             if st.button("⏻", key="logout_btn", use_container_width=True, help="התנתק"):
-                logout()
+                st.session_state["ask_logout"] = not st.session_state.get("ask_logout", False)
                 st.rerun()
+    # ⏻ צמוד לכפתור הירח — לחיצה בטעות מוחקת את הכניסה השמורה, ולכן שואלים
+    if st.session_state.get("ask_logout"):
+        answer = confirm_row("להתנתק? כדי להיכנס שוב צריך את הקישור מהבוט או סיסמה.", "⏻ כן, להתנתק", "logout")
+        if answer is not None:
+            st.session_state.pop("ask_logout", None)
+            if answer:
+                logout()
+            st.rerun()
 
     # שורה 2: סינון חודש (+ קבוצה, רק אם יש קבוצות) — זה לצד זה גם בטלפון
     with st.container(key="filters"):
@@ -2027,11 +2103,13 @@ def main():
     budgets = st.session_state[bkey]
 
     df_prev_cmp, partial = same_period(df_prev, selected_month)
+    # הוצאות קבועות — לתחזית סוף החודש (אישיות בלבד; בקבוצה אין להן משמעות משותפת)
+    recurring = fetch_recurring(uid) if active_group_id == 0 else []
 
     t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
         ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🔄 חוזרות", "🎯 תקציב", "👥 משותף", "🤖 תובנות", "⚙️ הגדרות"])
 
-    with t1: tab_overview(df, df_prev_cmp, budgets, selected_month, partial)
+    with t1: tab_overview(df, df_prev_cmp, budgets, selected_month, partial, recurring)
     with t2: tab_trends(df_all)
     with t3: tab_table(df_all, uid, selected_month, display_name)
     with t4: tab_recurring(uid)
