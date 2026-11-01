@@ -2080,9 +2080,12 @@ def _build_context(df, df_prev, budgets, month_label: str, partial=False,
         freq = (items.groupby("_item")["amount"].agg(["count", "sum"])
                 .query("count >= 2").sort_values("sum", ascending=False).head(8))
         if not freq.empty:
-            lines.append("\nפריטים שחוזרים החודש:")
+            # עם הקטגוריה של כל פריט — בלי זה ה-AI ניחש ("השידה גרמה לחריגה בסופר")
+            lines.append("\nפריטים שחוזרים החודש (בסוגריים: באיזו קטגוריה נרשמו):")
             for item, r in freq.iterrows():
-                lines.append(f"  • {item} ×{int(r['count'])} = ₪{r['sum']:,.0f}")
+                cats = items[items["_item"] == item]["category"].value_counts()
+                cat_str = ", ".join(f"{cat} ×{n}" if len(cats) > 1 else cat for cat, n in cats.items())
+                lines.append(f"  • {item} ×{int(r['count'])} = ₪{r['sum']:,.0f} ({cat_str})")
 
         # spending days
         by_day = df.groupby(df["date"].dt.date)["amount"].sum().sort_values(ascending=False)
@@ -2108,7 +2111,10 @@ def _build_context(df, df_prev, budgets, month_label: str, partial=False,
 _SYSTEM_PROMPT = (
     "אתה עוזר אישי לניהול כספים. תמיד ענה בעברית. "
     "היה ידידותי, ספציפי עם מספרים ותן עצות מעשיות לחיסכון. "
-    "אל תמציא נתונים — השתמש רק במה שנמסר לך."
+    "אל תמציא נתונים — השתמש רק במה שנמסר לך. "
+    "כל הוצאה שייכת לקטגוריה שבה היא רשומה בנתונים; אל תשייך אותה לקטגוריה אחרת. "
+    "אל תמציא שמות של אפליקציות, אתרים, מבצעים או חנויות. "
+    "המלצות צריכות להיות פעולות שהמשתמש יכול לעשות בעצמו, לא העברת כסף בין סעיפי תקציב."
 )
 
 
