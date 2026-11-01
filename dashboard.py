@@ -71,7 +71,8 @@ header[data-testid="stHeader"] { background-color: rgba(0,0,0,0) !important; }
 [data-testid="stToolbar"] { display: none; }
 @media (prefers-reduced-motion: no-preference) {
     @keyframes fadeUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
-    .metric-card { animation: fadeUp .45s ease both; }
+    /* רק בטעינה הראשונה (מחלקה anim) — אחרת הכרטיסים "קופצים" בכל לחיצה בדף */
+    .metric-card.anim { animation: fadeUp .45s ease both; }
     [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:nth-child(2) .metric-card { animation-delay: .07s; }
     [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:nth-child(3) .metric-card { animation-delay: .14s; }
     [data-testid="stHorizontalBlock"] [data-testid="stColumn"]:nth-child(4) .metric-card { animation-delay: .21s; }
@@ -101,7 +102,8 @@ _LIGHT = """
 .metric-card.hero .metric-value { color: #FFFFFF !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(255,255,255,.22); color: #FFFFFF !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
 @keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.budget-bar-fill { transform-origin: right; animation: growBar .7s ease; }
+.budget-bar-fill { transform-origin: right; }
+.budget-bar-fill.anim { animation: growBar .7s ease; }
 .stTabs [role="tablist"] { gap: 4px; background: #EDE8DC; border-radius: 10px; padding: 4px; }
 .stTabs [data-testid="stTab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #78716C; border: none; }
 .stTabs [aria-selected="true"] { background: #FFFFFF !important; color: #B45309 !important; border: 1px solid #D6D0C6 !important; box-shadow: 0 1px 4px rgba(28,25,23,0.08) !important; }
@@ -160,7 +162,8 @@ _DARK = """
 .metric-card.hero .metric-value { color: #1C1008 !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(0,0,0,.18); color: #1C1008 !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
 @keyframes growBar { from { transform: scaleX(0); } to { transform: scaleX(1); } }
-.budget-bar-fill { transform-origin: right; animation: growBar .7s ease; }
+.budget-bar-fill { transform-origin: right; }
+.budget-bar-fill.anim { animation: growBar .7s ease; }
 .stTabs [role="tablist"] { gap: 4px; background: #2C1A0E; border-radius: 10px; padding: 4px; }
 .stTabs [data-testid="stTab"] { background: transparent; border-radius: 8px; padding: 6px 14px; font-weight: 500; color: #A08060; border: none; }
 .stTabs [aria-selected="true"] { background: #3D2010 !important; color: #F59E0B !important; border: 1px solid #5C3020 !important; box-shadow: 0 1px 4px rgba(0,0,0,0.3) !important; }
@@ -626,20 +629,26 @@ def add_expense(user_id, amount, category, item, date):
 
 
 @st.cache_resource
-def get_hebrew_font_path():
-    font_path = os.path.join(tempfile.gettempdir(), "NotoSansHebrew.ttf")
+def _noto_font_path(name):
+    """מוריד גופן Noto לתיקייה הזמנית (פעם אחת) ומחזיר את הנתיב, או None אם ההורדה נכשלה."""
+    font_path = os.path.join(tempfile.gettempdir(), f"{name}.ttf")
     if not os.path.exists(font_path):
         try:
             import requests
             r = requests.get(
-                "https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/NotoSansHebrew/NotoSansHebrew-Regular.ttf",
+                f"https://github.com/googlefonts/noto-fonts/raw/main/hinted/ttf/{name.split('-')[0]}/{name}.ttf",
                 timeout=15
             )
+            r.raise_for_status()
             with open(font_path, "wb") as f:
                 f.write(r.content)
         except Exception:
             return None
     return font_path
+
+
+def get_hebrew_font_path():
+    return _noto_font_path("NotoSansHebrew-Regular")
 
 
 def generate_pdf(df, selected_month, display_name):
@@ -664,6 +673,11 @@ def generate_pdf(df, selected_month, display_name):
 
     if has_heb:
         pdf.add_font("Heb", "", font_path)
+        # בגופן העברי אין אותיות לטיניות ומרכאות — "COFFEE POINT" יצא ריק. גופן גיבוי לתווים חסרים
+        latin_path = _noto_font_path("NotoSans-Regular")
+        if latin_path:
+            pdf.add_font("Lat", "", latin_path)
+            pdf.set_fallback_fonts(["Lat"])
 
     def set_heb(size):
         pdf.set_font("Heb" if has_heb else "Helvetica", size=size)
@@ -782,7 +796,10 @@ def generate_pdf(df, selected_month, display_name):
             set_heb(8)
             pdf.set_text_color(60, 50, 40)
             pdf.cell(COL_ITEM, row_h, heb(item_str), fill=True, align="R")
-            # Category — Hebrew font
+            # Category — Hebrew font. אחרי טקסט שנכתב בגופן הגיבוי fpdf חושב שהגופן לא השתנה
+            # ומדלג על set_font — מחליפים לגופן אחר וחוזרים כדי לאלץ אותו
+            set_num(8)
+            set_heb(8)
             pdf.cell(COL_CAT, row_h, heb(cat_str), fill=True, align="R")
             # Amount — Helvetica, accent color
             set_num(9)
@@ -973,7 +990,13 @@ def login_page():
 
 # ── HELPERS ───────────────────────────────────────────────────────────────────
 
+def anim_cls():
+    """מחלקת אנימציה רק בהרצה הראשונה של הסשן (main מסמן animated_once בסוף ההרצה)."""
+    return "" if st.session_state.get("animated_once") else " anim"
+
+
 def card(label, value, cls="", chip=None):
+    cls += anim_cls()
     if "hero" in cls:
         chip_html = f'<span class="metric-chip">{chip}</span>' if chip else ""
         st.markdown(f"""
@@ -1707,7 +1730,7 @@ def tab_budget(df, selected_month, user_id, group_id=0, recurring=None):
               </div>
               <div style="position:relative">
                 <div style="height:9px;background:{track};border-radius:999px;overflow:hidden;display:flex">
-                  <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color}"></div>
+                  <div class="budget-bar-fill{anim_cls()}" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color}"></div>
                   <div style="height:100%;width:{res_pct*100:.1f}%;background:{reserved_color}"></div>
                 </div>{tick}
               </div>
@@ -1802,7 +1825,7 @@ def tab_shared(groups, uid, selected_month):
             <span style="color:{c['muted']}"><b style="color:{c['accent']}">₪{row['amount']:,.0f}</b> · {row['אחוז']:.0f}%</span>
           </div>
           <div style="height:9px;background:{c['bg2']};border-radius:999px;overflow:hidden">
-            <div class="budget-bar-fill" style="height:100%;width:{row['אחוז']:.0f}%;background:{c['accent']};border-radius:999px"></div>
+            <div class="budget-bar-fill{anim_cls()}" style="height:100%;width:{row['אחוז']:.0f}%;background:{c['accent']};border-radius:999px"></div>
           </div>
         </div>"""
     st.markdown(rows, unsafe_allow_html=True)
@@ -2010,8 +2033,13 @@ def _groq_chat(messages: list) -> str:
     return answer
 
 
-def _build_context(df, df_prev, budgets, month_label: str, partial=False) -> str:
+def _build_context(df, df_prev, budgets, month_label: str, partial=False,
+                   recurring=None, selected_month=None) -> str:
     lines = [f"נתוני הוצאות לחודש {month_label}:"]
+    if selected_month:
+        days_elapsed, days_in_month, is_current = month_progress(selected_month)
+        if is_current:
+            lines.append(f"(החודש עדיין לא הסתיים — עברו {days_elapsed} ימים מתוך {days_in_month})")
     if df.empty:
         lines.append("אין הוצאות רשומות לחודש זה.")
     else:
@@ -2047,11 +2075,32 @@ def _build_context(df, df_prev, budgets, month_label: str, partial=False) -> str
             d = r["date"].strftime("%d/%m") if hasattr(r["date"], "strftime") else str(r["date"])[:5]
             lines.append(f"  • {r['item']} ({r['category']}) — ₪{r['amount']:,.0f} ב-{d}")
 
+        # פריטים שחוזרים על עצמם — מכאן באות עצות ספציפיות ("פיצה ×9"), לא כלליות
+        items = df.assign(_item=df["item"].fillna("").str.strip()).query("_item != ''")
+        freq = (items.groupby("_item")["amount"].agg(["count", "sum"])
+                .query("count >= 2").sort_values("sum", ascending=False).head(8))
+        if not freq.empty:
+            lines.append("\nפריטים שחוזרים החודש:")
+            for item, r in freq.iterrows():
+                lines.append(f"  • {item} ×{int(r['count'])} = ₪{r['sum']:,.0f}")
+
         # spending days
         by_day = df.groupby(df["date"].dt.date)["amount"].sum().sort_values(ascending=False)
         if len(by_day) > 0:
             peak_day = by_day.index[0]
             lines.append(f"\nיום הוצאה שיא: {peak_day.strftime('%d/%m/%Y')} — ₪{by_day.iloc[0]:,.0f}")
+
+    # הוצאות קבועות — כדי שה-AI לא ימליץ "לקצץ בחשבונות" כשרובם שכר דירה
+    active_rec = [r for r in recurring or [] if r.get("active", True)]
+    if active_rec:
+        lines.append(f"\nהוצאות קבועות חודשיות (קשה לשנות בטווח קצר), סה\"כ ₪{sum(float(r['amount']) for r in active_rec):,.0f}:")
+        for r in sorted(active_rec, key=lambda r: -float(r["amount"])):
+            lines.append(f"  • {r['item']} ({r['category']}) — ₪{float(r['amount']):,.0f}")
+    if selected_month:
+        lts = left_to_spend(df, budgets, recurring, selected_month)
+        if lts:
+            lines.append(f"\nנשאר להוציא עד סוף החודש: ₪{lts['left']:,.0f} (בערך ₪{lts['per_day']:,.0f} ליום), "
+                         f"אחרי ₪{lts['fixed_due']:,.0f} הוצאות קבועות שעוד יירדו")
 
     return "\n".join(lines)
 
@@ -2063,13 +2112,13 @@ _SYSTEM_PROMPT = (
 )
 
 
-def tab_insights(df, df_prev, budgets, selected_month, display_name, partial=False):
+def tab_insights(df, df_prev, budgets, selected_month, display_name, partial=False, recurring=None):
     if not GROQ_API_KEY:
         st.warning("⚠️ GROQ_API_KEY לא מוגדר. הוסף אותו ב-Streamlit Secrets.")
         return
 
     month_label = datetime.strptime(selected_month, "%Y-%m").strftime("%m/%Y")
-    context = _build_context(df, df_prev, budgets, month_label, partial)
+    context = _build_context(df, df_prev, budgets, month_label, partial, recurring, selected_month)
     insight_key = f"insight_{selected_month}"
     chat_key    = f"chat_{selected_month}"
     if chat_key not in st.session_state:
@@ -2088,8 +2137,8 @@ def tab_insights(df, df_prev, budgets, selected_month, display_name, partial=Fal
             "בצע ניתוח מקיף הכולל:\n"
             "1. סיכום קצר של החודש\n"
             "2. השוואה לחודש קודם (אם יש נתונים)\n"
-            "3. זיהוי 2-3 דפוסי הוצאה מעניינים\n"
-            "4. 3 המלצות מעשיות לחיסכון\n\n"
+            "3. זיהוי 2-3 דפוסי הוצאה מעניינים — על בסיס הפריטים שחוזרים, עם מספרים\n"
+            "4. 3 המלצות מעשיות לחיסכון, ספציפיות לפריטים שלמעלה. אל תמליץ לקצץ בהוצאות הקבועות\n\n"
             "כתוב בצורה ברורה עם כותרות Markdown קצרות ואמוג'ים."
         )
         with st.spinner("מנתח את ההוצאות שלך..."):
@@ -2287,11 +2336,13 @@ def main():
         if section == "👥 משותף":
             tab_shared(groups, uid, selected_month)
         elif section == "🤖 תובנות":
-            tab_insights(df, df_prev_cmp, budgets, selected_month, display_name, partial)
+            tab_insights(df, df_prev_cmp, budgets, selected_month, display_name, partial, recurring)
         elif section == "⚙️ הגדרות":
             tab_settings()
         else:
             tab_recurring(uid)
+
+    st.session_state["animated_once"] = True
 
 
 if __name__ == "__main__":
