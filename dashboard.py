@@ -96,7 +96,7 @@ _LIGHT = """
 .metric-label { font-size: 0.82rem; color: #78716C; margin-top: 4px; }
 .metric-card { transition: transform .2s ease, box-shadow .2s ease; }
 .metric-card:hover { transform: translateY(-2px); }
-.metric-card.hero { background: linear-gradient(135deg,#E28413,#B4530A); border: none; text-align: right; box-shadow: 0 2px 6px rgba(180,83,9,.25), 0 14px 30px -10px rgba(180,83,9,.4); }
+.metric-card.hero { background: linear-gradient(135deg,#C2620C,#9A4508); border: none; text-align: right; box-shadow: 0 2px 6px rgba(180,83,9,.25), 0 14px 30px -10px rgba(180,83,9,.4); }
 .metric-card.hero .metric-label { color: rgba(255,255,255,.9) !important; }
 .metric-card.hero .metric-value { color: #FFFFFF !important; font-size: clamp(1.7rem, 7vw, 2.4rem) !important; letter-spacing: -0.02em; margin-top: 2px; }
 .metric-chip { display: inline-block; margin-top: 10px; background: rgba(255,255,255,.22); color: #FFFFFF !important; border-radius: 999px; padding: 3px 11px; font-size: 0.8rem; font-weight: 600; }
@@ -177,6 +177,22 @@ section[data-testid="stSidebar"] h1, section[data-testid="stSidebar"] h2, sectio
 .stSelectbox > div > div { background-color: #2C1A0E !important; color: #F5E6D3 !important; border: 1px solid #3D2010 !important; }
 label, .stRadio label, .stCheckbox label { color: #A08060 !important; }
 [data-testid="stDataFrame"] { border-radius: 10px; border: 1px solid #5C3020; overflow: hidden; }
+/* config.toml קובע base=light, אז מה שלא עיצבנו כאן נשאר בהיר בלילה.
+   הטבלה מצוירת על canvas בצבעי התמה הבהירה ו-CSS לא מגיע אליה — הופכים אותה כולה */
+[data-testid="stDataFrame"] > div { filter: invert(1) hue-rotate(180deg); }
+.stDownloadButton > button { background-color: #2C1A0E !important; border: 1px solid #5C3020 !important; }
+.stDownloadButton > button * { color: #F5E6D3 !important; }
+[data-testid="stCheckbox"] label > div:first-of-type { background-color: #3D2010 !important; border-color: #5C3020 !important; }
+[data-testid="stCheckbox"] label[data-selected] > div:first-of-type { background-color: #D97706 !important; border-color: #D97706 !important; }
+[data-testid="stRadioOption"] > div > div:first-child { background-color: #2C1A0E !important; border-color: #8A6E52 !important; }
+input::placeholder, textarea::placeholder { color: #8A6E52 !important; opacity: 1 !important; }
+[data-testid="stCaptionContainer"], [data-testid="stCaptionContainer"] * { color: #A08060 !important; }
+summary svg { color: #A08060 !important; fill: #A08060 !important; }
+[data-testid="stTextInputRootElement"], [data-testid="stNumberInputContainer"], [data-testid="stChatInput"] > div,
+[data-testid="stTextArea"] [data-baseweb="textarea"] { border-color: #5A3A22 !important; background-color: #2C1A0E !important; }
+[data-testid="stNumberInputContainer"] button, [data-testid="stTextInputRootElement"] button { background-color: #3D2010 !important; color: #F5E6D3 !important; }
+[data-testid="stNumberInputContainer"] button svg, [data-testid="stTextInputRootElement"] button svg { fill: #F5E6D3 !important; color: #F5E6D3 !important; }
+[data-testid="stChatInput"] textarea { background-color: #2C1A0E !important; color: #F5E6D3 !important; }
 h1, h2, h3, h4 { color: #F5E6D3 !important; text-align: right !important; }
 p, span, div { color: #A08060; text-align: right; }
 hr { border: none !important; border-top: 1px solid #33261A !important; margin: 0.7rem 0 !important; }
@@ -510,6 +526,16 @@ def fetch_shared_expenses(group_id, month=None):
     return df
 
 
+def _he_prefix(letter, name):
+    """מ/ל צמודים לשם עברי ("מנועה"), עם מקף לשם לועזי ("מ-Yarden")."""
+    name = html.escape(str(name))
+    return f"{letter}{name}" if name[:1] and "\u0590" <= name[0] <= "\u05FF" else f"{letter}-{name}"
+
+
+def _from_to(debtor, creditor):
+    return f"{_he_prefix('מ', debtor)} {_he_prefix('ל', creditor)}"
+
+
 def calculate_settlement(df_shared, member_ids, user_map):
     """מחשב מי חייב למי — מחזיר רשימת (חייב, זכאי, סכום)."""
     if df_shared.empty or len(member_ids) < 2:
@@ -810,7 +836,7 @@ def login_page():
                     unsafe_allow_html=True)
 
         if st.session_state.get("token_invalid"):
-            st.warning("הקישור פג תוקף או בוטל — שלח /dashboard לבוט לקבלת קישור חדש")
+            st.warning("הקישור פג תוקף או בוטל — שלחו `/dashboard` לבוט לקבלת קישור חדש")
 
         tab_login, tab_register = st.tabs(["🔑 כניסה", "📝 הרשמה"])
 
@@ -846,7 +872,7 @@ def login_page():
             # ── שחזור סיסמה ──
             st.markdown("<br>", unsafe_allow_html=True)
             with st.expander("🔓 שכחתי סיסמה"):
-                st.markdown("<span style='font-size:0.85rem'>שלח /resetpass לבוט בטלגרם לקבלת קוד אימות</span>",
+                st.markdown("<span style='font-size:0.85rem'>שלחו \u2066/resetpass\u2069 לבוט בטלגרם לקבלת קוד אימות</span>",
                             unsafe_allow_html=True)
                 r_uid = st.number_input("Telegram user_id שלך", min_value=1, step=1, key="reset_uid")
                 r_code = st.text_input("קוד אימות מהבוט", max_chars=6, key="reset_code")
@@ -882,7 +908,7 @@ def login_page():
                                 info["fails"] = 0
                                 st.error("🚫 יותר מדי ניסיונות כושלים — נחסם ל-5 דקות")
                             else:
-                                st.error("קוד שגוי או שפג תוקפו — שלח /resetpass לבוט לקבלת קוד חדש")
+                                st.error("קוד שגוי או שפג תוקפו — שלחו `/resetpass` לבוט לקבלת קוד חדש")
                             attempts[rkey] = info
                         else:
                             attempts.pop(rkey, None)
@@ -1105,7 +1131,7 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
         c1, c2, c3, c4 = st.columns([2, 1, 1, 1])
         with c1: card("סה\"כ החודש", f"₪{total:,.0f}", "hero", chip=chip)
         with c2: card("ממוצע יומי", f"₪{daily_avg:,.0f}", "purple")
-        with c3: card("קטגוריה מובילה", top_cat, "red")
+        with c3: card("קטגוריה מובילה", top_cat)  # לא אדום — זה מידע, לא אזהרה
         with c4:
             if budget_pct is not None:
                 card("מהתקציב", f"{budget_pct:.0f}%", "red" if budget_pct > 90 else "green")
@@ -1125,7 +1151,7 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
                         line=dict(color=c["bg"], width=2)),
             texttemplate="%{percent:.0%}", textposition="inside", textfont=dict(size=12, color="#FFFFFF"),
             insidetextorientation="horizontal",
-            hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} · %{percent}<extra></extra>",
+            hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} · %{percent:.0%}<extra></extra>",
         ))
         layout = plot_layout()
         layout["margin"] = dict(l=0, r=0, t=10, b=10)
@@ -1624,34 +1650,32 @@ def tab_shared(groups, uid, selected_month):
                 f"border:1px solid {c['border']};border-right:4px solid {c['accent']}'>"
                 f"<div style='color:{c['muted']};font-size:0.8rem'>💸 העברה כדי להתחשבן</div>"
                 f"<div style='color:{c['text']};font-size:1.15rem;font-weight:700;margin-top:2px'>"
-                f"{html.escape(str(debtor))} ← {html.escape(str(creditor))}: "
+                f"{_from_to(debtor, creditor)}: "
                 f"<span style='color:{c['accent']}'>₪{amount:,.0f}</span></div>"
                 f"</div>",
                 unsafe_allow_html=True)
     else:
         st.success("✅ הכל מחולק שווה — אין חובות")
 
-    col1, col2 = st.columns(2)
-    with col1:
-        st.markdown("#### מי שילם כמה")
-        for _, row in totals.sort_values("amount", ascending=False).iterrows():
-            st.markdown(
-                f"<span style='color:{c['text']};font-weight:600'>{html.escape(str(row['user_name']))}:</span> "
-                f"<span style='color:{c['accent']};font-weight:700'>₪{row['amount']:,.0f}</span> "
-                f"<span style='color:{c['muted']}'>({row['אחוז']:.0f}%)</span>",
-                unsafe_allow_html=True)
-        st.markdown(
-            f"<span style='color:{c['muted']}'>סה\"כ: <b style='color:{c['text']}'>₪{grand:,.0f}</b>"
-            f" · חלק של כל אחד: <b style='color:{c['text']}'>₪{per_person:,.0f}</b></span>",
-            unsafe_allow_html=True)
-    with col2:
-        fig = px.pie(totals, values="amount", names="user_name", hole=0.55,
-                     color_discrete_sequence=["#D97706", "#3E8E5A", "#4A7BA6", "#C64B77", "#8F7F6C"])
-        fig.update_traces(textfont_color="#FFFFFF", textinfo="label+percent",
-                          hovertemplate="<b>%{label}</b><br>₪%{value:,.0f} · %{percent}<extra></extra>",
-                          marker=dict(line=dict(color=c["bg"], width=2)))
-        fig.update_layout(height=260, showlegend=False, **plot_layout())
-        show_chart(fig, "pie_shared")
+    # בשני אנשים עוגה רק חזרה על שתי השורות, והתוויות שלה התהפכו ב-RTL — פסים פשוטים במקום
+    st.markdown("#### מי שילם כמה")
+    rows = ""
+    for _, row in totals.sort_values("amount", ascending=False).iterrows():
+        rows += f"""
+        <div style="margin:10px 0">
+          <div style="display:flex;justify-content:space-between;font-size:0.9rem;margin-bottom:5px;gap:8px">
+            <span style="color:{c['text']};font-weight:600">{html.escape(str(row['user_name']))}</span>
+            <span style="color:{c['muted']}"><b style="color:{c['accent']}">₪{row['amount']:,.0f}</b> · {row['אחוז']:.0f}%</span>
+          </div>
+          <div style="height:9px;background:{c['bg2']};border-radius:999px;overflow:hidden">
+            <div class="budget-bar-fill" style="height:100%;width:{row['אחוז']:.0f}%;background:{c['accent']};border-radius:999px"></div>
+          </div>
+        </div>"""
+    st.markdown(rows, unsafe_allow_html=True)
+    st.markdown(
+        f"<span style='color:{c['muted']}'>סה\"כ: <b style='color:{c['text']}'>₪{grand:,.0f}</b>"
+        f" · חלק של כל אחד: <b style='color:{c['text']}'>₪{per_person:,.0f}</b></span>",
+        unsafe_allow_html=True)
 
     st.markdown("---")
     st.markdown("#### פירוט לפי משתמש")
@@ -1689,7 +1713,7 @@ def tab_settings():
     # ── המכשיר הזה — רק כשנכנסו עם קישור אישי ──
     if st.session_state.get("device_session_id"):
         st.markdown("<span style='font-size:0.85rem'>נכנסת עם קישור אישי מהבוט. "
-                    "ניתוק המכשיר מבטל את הקישור, וכדי להיכנס שוב צריך לשלוח /dashboard לבוט.</span>",
+                    "ניתוק המכשיר מבטל את הקישור, וכדי להיכנס שוב צריך לשלוח \u2066/dashboard\u2069 לבוט.</span>",
                     unsafe_allow_html=True)
         if st.session_state.get("ask_revoke"):
             answer = confirm_row("לנתק את המכשיר? הקישור יבוטל, וכדי להיכנס שוב צריך קישור חדש מהבוט.", "🔌 כן, לנתק", "revoke")
