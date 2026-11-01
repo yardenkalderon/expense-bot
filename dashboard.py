@@ -271,6 +271,13 @@ li {{ text-align: right; }}
 .stTabs [data-testid="stTab"] {{ cursor: pointer; }}
 /* סרגל הכלים של הטבלה צף מעליה — שלא יכסה את מה שמעליה */
 [data-testid="stElementContainer"]:has([data-testid="stDataFrame"]) {{ margin-top: 1.8rem; }}
+/* בורר הקטעים בלשונית "עוד" — ארבעה כפתורים שווים בשורה אחת, גם בטלפון */
+.st-key-more_section, .st-key-more_section [data-testid="stButtonGroup"] {{ width: 100% !important; }}
+.st-key-more_section [role="radiogroup"] {{ display: grid !important; grid-template-columns: repeat(4, 1fr); width: 100%; }}
+.st-key-more_section button {{ min-width: 0 !important; padding: 6px 2px !important; background: {c['bg']} !important; border-color: {c['border']} !important; }}
+.st-key-more_section button p {{ font-size: 0.82rem !important; color: {c['text']} !important; white-space: nowrap; }}
+.st-key-more_section button[aria-checked="true"] {{ background: {c['bg2']} !important; border-color: {c['accent']} !important; }}
+.st-key-more_section button[aria-checked="true"] p {{ color: {c['accent']} !important; font-weight: 600; }}
 /* ה-RTL הגלובלי הופך את עיגון הטקסט ב-SVG של Plotly ומעיף תוויות צירים מחוץ לגרף */
 .js-plotly-plot, .js-plotly-plot * {{ direction: ltr !important; }}
 
@@ -1698,7 +1705,7 @@ def tab_shared(groups, uid, selected_month):
 
     if not groups:
         if st.session_state.user.get("is_admin"):
-            st.info("אין לך קבוצות עדיין. אפשר ליצור קבוצה בלשונית ⚙️ הגדרות")
+            st.info("אין לך קבוצות עדיין. אפשר ליצור קבוצה בהגדרות (בלשונית ☰ עוד)")
         else:
             st.info("אין לך קבוצות עדיין — המנהל יכול להוסיף אותך לקבוצה")
         return
@@ -1738,7 +1745,7 @@ def tab_shared(groups, uid, selected_month):
 
     # ── השורה התחתונה קודם: מי חייב למי ──
     if len(member_ids) < 2:
-        where = "בלשונית ⚙️ הגדרות" if st.session_state.user.get("is_admin") else "דרך המנהל"
+        where = "בהגדרות (בלשונית ☰ עוד)" if st.session_state.user.get("is_admin") else "דרך המנהל"
         st.warning(f"⚠️ להתחשבנות צריך לפחות 2 חברים בקבוצה — אפשר להוסיף חברים {where}")
     elif settlements:
         for debtor, creditor, amount in settlements:
@@ -2233,17 +2240,28 @@ def main():
     # הוצאות קבועות — לתחזית סוף החודש (אישיות בלבד; בקבוצה אין להן משמעות משותפת)
     recurring = fetch_recurring(uid) if active_group_id == 0 else []
 
-    t1, t2, t3, t4, t5, t6, t7, t8 = st.tabs(
-        ["📊 סקירה", "📈 מגמות", "📋 הוצאות", "🔄 חוזרות", "🎯 תקציב", "👥 משותף", "🤖 תובנות", "⚙️ הגדרות"])
+    # 4 לשוניות בשורה אחת: מה שבודקים כל יום בחוץ, מה שפותחים פעם בחודש תחת "עוד"
+    t1, t2, t3, t4 = st.tabs(["📊 סקירה", "📋 הוצאות", "📈 מגמות", "☰ עוד"])
 
-    with t1: tab_overview(df, df_prev_cmp, budgets, selected_month, partial, recurring)
-    with t2: tab_trends(df_all)
-    with t3: tab_table(df_all, uid, selected_month, display_name)
-    with t4: tab_recurring(uid)
-    with t5: tab_budget(df, selected_month, uid, active_group_id)
-    with t6: tab_shared(groups, uid, selected_month)
-    with t7: tab_insights(df, df_prev_cmp, budgets, selected_month, display_name, partial)
-    with t8: tab_settings()
+    with t1:
+        tab_overview(df, df_prev_cmp, budgets, selected_month, partial, recurring)
+        st.markdown("---")
+        tab_budget(df, selected_month, uid, active_group_id)
+    with t2: tab_table(df_all, uid, selected_month, display_name)
+    with t3: tab_trends(df_all)
+    with t4:
+        # בחירה ולא expanders: בתוך הקטעים יש expanders משלהם, ו-Streamlit לא מרשה לקנן אותם.
+        # גם חוסך — רק הקטע שנבחר רץ
+        section = st.segmented_control("קטע", ["🔄 חוזרות", "👥 משותף", "🤖 תובנות", "⚙️ הגדרות"],
+                                       default="🔄 חוזרות", key="more_section", label_visibility="collapsed")
+        if section == "👥 משותף":
+            tab_shared(groups, uid, selected_month)
+        elif section == "🤖 תובנות":
+            tab_insights(df, df_prev_cmp, budgets, selected_month, display_name, partial)
+        elif section == "⚙️ הגדרות":
+            tab_settings()
+        else:
+            tab_recurring(uid)
 
 
 if __name__ == "__main__":

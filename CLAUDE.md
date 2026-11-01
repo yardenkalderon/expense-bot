@@ -47,8 +47,10 @@ Tables: `expenses`, `authorized_users`, `budgets`, `recurring_expenses`, `groups
 
 ### `dashboard.py`
 
-- One large file with 8 tabs, built in `main()`: overview, trends, recurring, table,
-  budget, shared, settings, insights.
+- One large file with 4 tabs, built in `main()`: overview (with the budget section below it),
+  expenses table, trends, and "עוד", where a segmented control picks recurring, shared,
+  insights or settings. Only the picked section runs. Expanders can't nest, so sections
+  that have their own expanders can't go inside one.
 - Its own auth: login and registration with the Telegram user ID, SHA-256 password hash,
   and a reset code sent through the bot's `/resetpass`.
 - Personal login link ("remember this device"): the bot's `/dashboard [label]` (private chats
