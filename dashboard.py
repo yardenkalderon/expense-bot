@@ -1052,6 +1052,26 @@ def projected_spend(spent, recurring, budgets, selected_month):
 
 # ── TABS ──────────────────────────────────────────────────────────────────────
 
+def left_to_spend(df, budgets, recurring, selected_month):
+    """כמה עוד אפשר להוציא החודש: תקציב פחות מה שהוצא, פחות הוצאות קבועות שעוד לא ירדו.
+    מחזיר (נשאר, ליום, קבועות_שעוד_יירדו, ימים_שנשארו) או None כשאין תקציב / זה לא החודש הנוכחי."""
+    days_elapsed, days_in_month, is_current = month_progress(selected_month)
+    spent, total_budget = budget_usage(df, budgets)
+    if not is_current or total_budget <= 0:
+        return None
+    fixed_due = sum(float(r["amount"]) for r in recurring or []
+                    if r.get("active", True) and (budgets or {}).get(r.get("category"), 0) > 0
+                    and r.get("day_of_month", 1) > days_elapsed)
+    left = total_budget - spent - fixed_due
+    days_left = days_in_month - days_elapsed + 1  # כולל היום
+    return left, left / days_left, fixed_due, days_left
+
+
+def _day_label(d):
+    today = datetime.now(TZ).date()
+    return "היום" if d == today else "אתמול" if d == today - timedelta(days=1) else d.strftime("%d/%m")
+
+
 def _overview_insight(df, df_prev, budgets, selected_month, total, partial=False, recurring=None):
     """מחזיר (אימוג'י, טקסט) — תובנה חכמה אחת, או None. בלי AI, מיידי.
     df_prev כבר חתוך לאותה תקופה (same_period) כשהחודש הנוכחי חלקי."""
@@ -1112,6 +1132,26 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
             arrow = "↑" if change >= 0 else "↓"
             chip = f"{arrow} {abs(change):.0f}% {vs_prev_label(partial)}"
 
+    c = tc()
+    # ── השאלה שבגללה פותחים את הדשבורד: כמה עוד אפשר להוציא ──
+    lts = left_to_spend(df, budgets, recurring, selected_month)
+    if lts:
+        left, per_day, fixed_due, days_left = lts
+        if left >= 0:
+            head = f"נשארו <b style='color:{c['accent2']}'>₪{left:,.0f}</b> החודש"
+            sub = f"בערך ₪{per_day:,.0f} ליום · {days_left} ימים עד סוף החודש"
+        else:
+            head = f"<b style='color:{c['danger']}'>חריגה של ₪{-left:,.0f}</b> מהתקציב"
+            sub = f"כולל הוצאות קבועות שעוד יירדו החודש"
+        fixed_note = (f"<div style='color:{c['muted']};font-size:0.78rem;margin-top:4px'>"
+                      f"אחרי ₪{fixed_due:,.0f} בהוצאות קבועות שעוד לא ירדו</div>") if fixed_due > 0 and left >= 0 else ""
+        st.markdown(f"""
+        <div style="background:{c['bg']};border:1px solid {c['border']};border-radius:14px;
+                    padding:14px 16px;margin-bottom:12px;text-align:right">
+          <div style="color:{c['text']};font-size:1.35rem;font-weight:600;line-height:1.3">{head}</div>
+          <div style="color:{c['muted']};font-size:0.9rem;margin-top:2px">{sub}</div>{fixed_note}
+        </div>""", unsafe_allow_html=True)
+
     # באנר תובנה חכמה — משפט אחד מחושב, בלי AI
     insight = _overview_insight(df, df_prev, budgets, selected_month, total, partial, recurring)
     if insight:
@@ -1141,6 +1181,19 @@ def tab_overview(df, df_prev, budgets, selected_month=None, partial=False, recur
                     card("נוצל מהתקציב", f"{budget_pct:.0f}%", "red" if budget_pct > 90 else "green")
             else:
                 card("תקציב", "לא הוגדר")
+
+    # ── 5 ההוצאות האחרונות — לבדוק מהר שהבוט רשם נכון ──
+    last5 = df.sort_values(["date", "id"], ascending=False).head(5)
+    rows = ""
+    for _, r in last5.iterrows():
+        rows += (f"<div style='display:flex;justify-content:space-between;align-items:baseline;gap:8px;"
+                 f"padding:7px 0;border-bottom:1px solid {c['border']}'>"
+                 f"<span><span style='color:{c['text']};font-weight:600'>{html.escape(str(r['item'] or ''))}</span>"
+                 f"<span style='color:{c['muted']};font-size:0.8rem'> · {r['category']} · {_day_label(r['date'].date())}</span></span>"
+                 f"<span style='color:{c['text']};font-weight:700;white-space:nowrap'>₪{r['amount']:,.0f}</span></div>")
+    st.markdown(f"#### הוצאות אחרונות")
+    st.markdown(rows + f"<div style='color:{c['muted']};font-size:0.78rem;margin-top:6px'>"
+                f"משהו לא נרשם נכון? מתקנים בלשונית 📋 הוצאות</div>", unsafe_allow_html=True)
 
     st.markdown("---")
     col1, col2 = st.columns(2)
