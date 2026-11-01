@@ -1218,20 +1218,37 @@ def tab_trends(df_all):
     if gran == "יומי":
         period = day
     elif gran == "שבועי":
-        period = day - pd.to_timedelta((day.dt.weekday + 1) % 7, unit="D")   # שבוע מתחיל ביום ראשון
+        period = day - pd.to_timedelta((day.dt.day_of_week + 1) % 7, unit="D")   # שבוע מתחיל ביום ראשון
     else:
         period = day.dt.to_period("M").dt.to_timestamp()
     pts = df_all.groupby(period)["amount"].sum().reset_index().sort_values("date")
     hover_fmt = {"יומי": "%d/%m/%Y", "שבועי": "שבוע מ-%d/%m", "חודשי": "%m/%Y"}[gran]
 
+    # התקופה האחרונה עדיין לא נגמרה (היום / השבוע / החודש) — ירידה בה היא לא ירידה אמיתית.
+    # מציירים אותה בקו מקווקו ובנקודה חלולה, כמו "עד היום" בעמודות החודשיות
+    today = pd.Timestamp(datetime.now(TZ).date())
+    last = pts["date"].iloc[-1]
+    period_end = {"יומי": last + pd.Timedelta(days=1), "שבועי": last + pd.Timedelta(days=7),
+                  "חודשי": last + pd.offsets.MonthBegin(1)}[gran]
+    partial_last = len(pts) > 1 and period_end > today
+    full = pts.iloc[:-1] if partial_last else pts
+
     fig = go.Figure(go.Scatter(
-        x=pts["date"], y=pts["amount"], mode="lines+markers",
+        x=full["date"], y=full["amount"], mode="lines+markers",
         line=dict(color=c["accent"], width=2.5), marker=dict(size=6),
         fill="tozeroy", fillcolor="rgba(217,119,6,0.10)",
         hovertemplate="<b>%{x|" + hover_fmt + "}</b><br>₪%{y:,.0f}<extra></extra>",
     ))
+    if partial_last:
+        fig.add_trace(go.Scatter(
+            x=pts["date"].iloc[-2:], y=pts["amount"].iloc[-2:], mode="lines+markers",
+            line=dict(color=c["accent"], width=2, dash="dot"),
+            marker=dict(size=[0, 8], color=c["bg"], line=dict(color=c["accent"], width=2)),
+            hovertemplate="<b>%{x|" + hover_fmt + "}</b> · עד היום<br>₪%{y:,.0f}<extra></extra>",
+        ))
     layout = plot_layout()
-    layout["margin"] = dict(l=56, r=10, t=10, b=30)
+    layout["showlegend"] = False
+    layout["margin"] = dict(l=56, r=18, t=10, b=30)
     layout["xaxis"] = dict(layout["xaxis"], tickformat="%m/%Y" if gran == "חודשי" else "%d/%m", nticks=6)
     layout["yaxis"] = dict(layout["yaxis"], tickprefix="₪", tickformat=",.0f", rangemode="tozero")
     fig.update_layout(height=320, **layout)
@@ -1274,19 +1291,22 @@ def tab_recurring(user_id):
         st.markdown(f"<div style='color:{c['muted']};margin-bottom:0.4rem'>סה\"כ בחודש: "
                     f"<b style='color:{c['accent']}'>₪{active_total:,.0f}</b></div>", unsafe_allow_html=True)
 
-    # שמירה על 3 כפתורי הפעולה בשורה אחת גם במובייל (מונע קיפול אנכי)
+    # שורה = טקסט + כפתור עריכה קטן, גם בטלפון (בלי זה העמודות נערמות זו על זו)
     st.markdown("""
     <style>
-    [class*="st-key-recbtns_"] [data-testid="stHorizontalBlock"]{
+    [class*="st-key-recrow_"] [data-testid="stHorizontalBlock"], [class*="st-key-recbtns_"] [data-testid="stHorizontalBlock"]{
         flex-wrap:nowrap !important; gap:6px !important;
     }
-    [class*="st-key-recbtns_"] [data-testid="stColumn"]{ min-width:0 !important; }
+    [class*="st-key-recrow_"] [data-testid="stColumn"], [class*="st-key-recbtns_"] [data-testid="stColumn"]{ min-width:0 !important; }
+    [class*="st-key-recrow_"] [data-testid="stColumn"]:last-child{ flex:0 0 3.2rem !important; }
     </style>
     """, unsafe_allow_html=True)
 
     if rows:
         for row in rows:
-            # ── מצב עריכה לשורה זו ──
+            active = row["active"]
+            c = tc()
+            # ── מצב עריכה לשורה זו: כל הפעולות כאן, כדי שבשורה עצמה יהיה כפתור אחד ──
             if st.session_state.get("editing_rec") == row["id"]:
                 with st.form(f"edit_rec_{row['id']}"):
                     e_item = st.text_input("פריט", value=row["item"])
@@ -1301,55 +1321,61 @@ def tab_recurring(user_id):
                         if st.form_submit_button("💾 שמור", use_container_width=True):
                             update_recurring(row["id"], e_item, e_cat, e_amount, e_day)
                             st.session_state.pop("editing_rec", None)
+                            st.toast("ההוצאה החוזרת עודכנה", icon="✅")
                             st.rerun()
                     with sc2:
                         if st.form_submit_button("❌ ביטול", use_container_width=True):
                             st.session_state.pop("editing_rec", None)
                             st.rerun()
-                st.markdown("<hr style='margin:0.6rem 0'>",
+                with st.container(key=f"recbtns_{row['id']}"):
+                    if st.session_state.get("confirm_del_rec") == row["id"]:
+                        # מחיקה בשני שלבים — אין "בטל" אחרי מחיקה
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if st.button("🗑️ כן, למחוק", key=f"del_rec_{row['id']}", use_container_width=True):
+                                delete_recurring(row["id"])
+                                st.session_state.pop("confirm_del_rec", None)
+                                st.session_state.pop("editing_rec", None)
+                                st.toast("ההוצאה החוזרת נמחקה", icon="🗑️")
+                                st.rerun()
+                        with b2:
+                            if st.button("ביטול", key=f"keep_rec_{row['id']}", use_container_width=True):
+                                st.session_state.pop("confirm_del_rec", None)
+                                st.rerun()
+                    else:
+                        b1, b2 = st.columns(2)
+                        with b1:
+                            if st.button("⏸ השהה" if active else "▶️ הפעל", key=f"tog_{row['id']}",
+                                         use_container_width=True):
+                                toggle_recurring(row["id"], not active)
+                                st.session_state.pop("editing_rec", None)
+                                st.rerun()
+                        with b2:
+                            if st.button("🗑️ מחק", key=f"del_rec_{row['id']}", use_container_width=True):
+                                st.session_state["confirm_del_rec"] = row["id"]
+                                st.rerun()
+                st.markdown(f"<hr style='margin:0.6rem 0;border:none;border-top:1px solid {c['border']}'>",
                             unsafe_allow_html=True)
                 continue
 
-            active = row["active"]
-            c = tc()
             name_style = f"color:{c['text']}" if active else f"color:{c['muted']};text-decoration:line-through"
-            paused = "" if active else f" <span style='color:{c['muted']};font-size:0.8rem'>(מושהה)</span>"
-            st.markdown(
-                f"<div style='text-align:right;line-height:1.55'>"
-                f"<span style='{name_style};font-weight:700;font-size:1.05rem'>{html.escape(str(row['item']))}</span>"
-                f"<span style='color:{c['accent']};font-weight:700'> · ₪{row['amount']:,.0f}</span>{paused}<br>"
-                f"<span style='color:{c['muted']};font-size:0.85rem'>{row['category']} · יום {row['day_of_month']} בחודש</span>"
-                f"</div>",
-                unsafe_allow_html=True,
-            )
-            with st.container(key=f"recbtns_{row['id']}"):
-                if st.session_state.get("confirm_del_rec") == row["id"]:
-                    # מחיקה בשני שלבים — אין "בטל" אחרי מחיקה
-                    b1, b2 = st.columns(2)
-                    with b1:
-                        if st.button("🗑️ כן, למחוק", key=f"del_rec_{row['id']}", use_container_width=True):
-                            delete_recurring(row["id"])
-                            st.session_state.pop("confirm_del_rec", None)
-                            st.rerun()
-                    with b2:
-                        if st.button("ביטול", key=f"keep_rec_{row['id']}", use_container_width=True):
-                            st.session_state.pop("confirm_del_rec", None)
-                            st.rerun()
-                else:
-                    b1, b2, b3 = st.columns(3)
-                    with b1:
-                        if st.button("⏸ השהה" if active else "▶️ הפעל", key=f"tog_{row['id']}",
-                                     use_container_width=True):
-                            toggle_recurring(row["id"], not active)
-                            st.rerun()
-                    with b2:
-                        if st.button("✏️ ערוך", key=f"edit_rec_{row['id']}", use_container_width=True):
-                            st.session_state["editing_rec"] = row["id"]
-                            st.rerun()
-                    with b3:
-                        if st.button("🗑️ מחק", key=f"del_rec_{row['id']}", use_container_width=True):
-                            st.session_state["confirm_del_rec"] = row["id"]
-                            st.rerun()
+            paused = "" if active else f" <span style='color:{c['muted']};font-size:0.8rem'>· מושהה</span>"
+            with st.container(key=f"recrow_{row['id']}"):
+                col_txt, col_btn = st.columns([6, 1], vertical_alignment="center")
+                with col_txt:
+                    st.markdown(
+                        f"<div style='text-align:right;line-height:1.55'>"
+                        f"<span style='{name_style};font-weight:700;font-size:1.05rem'>{html.escape(str(row['item']))}</span>"
+                        f"<span style='color:{c['accent']};font-weight:700'> · ₪{row['amount']:,.0f}</span>{paused}<br>"
+                        f"<span style='color:{c['muted']};font-size:0.85rem'>{row['category']} · יום {row['day_of_month']} בחודש</span>"
+                        f"</div>",
+                        unsafe_allow_html=True,
+                    )
+                with col_btn:
+                    if st.button("✏️", key=f"edit_rec_{row['id']}", use_container_width=True, help="עריכה, השהיה או מחיקה"):
+                        st.session_state["editing_rec"] = row["id"]
+                        st.session_state.pop("confirm_del_rec", None)
+                        st.rerun()
             st.markdown(f"<hr style='margin:0.6rem 0;border:none;border-top:1px solid {c['border']}'>",
                         unsafe_allow_html=True)
     else:
@@ -1568,9 +1594,17 @@ def tab_budget(df, selected_month, user_id, group_id=0):
           </div>
         </div>""", unsafe_allow_html=True)
 
-        # פסים דקים ומעוגלים לכל קטגוריה, בסדר הקבוע של הקטגוריות
+        # פסים לכל קטגוריה — הכי מנוצלת קודם, כדי שחריגות יהיו למעלה.
+        # בחודש הנוכחי קו דק מסמן כמה מהחודש עבר: פס שעבר את הקו מתקדם מהר מהתקציב
+        days_elapsed, days_in_month, is_current = month_progress(selected_month)
+        time_pct = days_elapsed / days_in_month * 100
+        tick = (f"<div style='position:absolute;top:-3px;bottom:-3px;right:{time_pct:.1f}%;width:2px;"
+                f"background:{c['text']};opacity:.55;border-radius:1px'></div>") if is_current else ""
+        if is_current:
+            st.markdown(f"<span style='color:{c['muted']};font-size:0.8rem'>הקו הדק בכל פס = היום ה-{days_elapsed} "
+                        f"מתוך {days_in_month} בחודש. פס שעבר אותו מתקדם מהר מהתקציב.</span>", unsafe_allow_html=True)
         rows = ""
-        for cat, budget in active.items():
+        for cat, budget in sorted(active.items(), key=lambda kv: -float(cat_totals.get(kv[0], 0)) / kv[1]):
             spent = float(cat_totals.get(cat, 0))
             pct = spent / budget if budget else 0
             color = bar_color(pct)
@@ -1582,8 +1616,10 @@ def tab_budget(df, selected_month, user_id, group_id=0):
                 <span style="color:{c['text']};font-weight:500">{cat}</span>
                 <span style="color:{c['muted']}">₪{spent:,.0f} מתוך ₪{budget:,.0f} · {note}</span>
               </div>
-              <div style="height:9px;background:{track};border-radius:999px;overflow:hidden">
-                <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color};border-radius:999px"></div>
+              <div style="position:relative">
+                <div style="height:9px;background:{track};border-radius:999px;overflow:hidden">
+                  <div class="budget-bar-fill" style="height:100%;width:{min(pct,1.0)*100:.1f}%;background:{color};border-radius:999px"></div>
+                </div>{tick}
               </div>
             </div>"""
         st.markdown(rows, unsafe_allow_html=True)
